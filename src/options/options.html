@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Prompt Enhancer - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-container">
+    <!-- Header -->
+    <header class="options-header">
+      <div class="header-content">
+        <h1>✨ AI Prompt Enhancer Settings</h1>
+        <p class="header-subtitle">Configure your prompt enhancement experience</p>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="options-main">
+      <!-- Enhancement Type Section -->
+      <section class="settings-section">
+        <h2 class="section-title">Enhancement Type</h2>
+        <p class="section-description">
+          Choose how your prompts should be enhanced. Each preset applies a different optimization strategy.
+        </p>
+
+        <div class="enhancement-types" id="enhancement-types">
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </section>
+
+      <!-- Custom Enhancement Section -->
+      <section class="settings-section" id="custom-enhancement-section" style="display: none;">
+        <h2 class="section-title">Custom Enhancement Instructions</h2>
+        <p class="section-description">
+          Define your own enhancement rules. Describe how you want prompts to be improved.
+        </p>
+
+        <div class="form-group">
+          <label for="custom-prompt-textarea">Custom Instructions</label>
+          <textarea
+            id="custom-prompt-textarea"
+            rows="8"
+            placeholder="Example: Enhance prompts by making them more detailed, adding relevant context, and structuring them with clear sections. Always include expected output format."
+          ></textarea>
+          <small class="help-text">
+            Tip: Be specific about what improvements you want. The AI will use these instructions to enhance your prompts.
+          </small>
+        </div>
+      </section>
+
+      <!-- Keyboard Shortcuts Section -->
+      <section class="settings-section">
+        <h2 class="section-title">Keyboard Shortcuts</h2>
+        <p class="section-description">
+          Quick-switch between enhancement presets using keyboard shortcuts.
+        </p>
+
+        <div class="shortcuts-grid">
+          <div class="shortcut-item">
+            <label>
+              <kbd>Alt</kbd> + <kbd>1</kbd>
+            </label>
+            <select id="shortcut-1" class="shortcut-select">
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+
+          <div class="shortcut-item">
+            <label>
+              <kbd>Alt</kbd> + <kbd>2</kbd>
+            </label>
+            <select id="shortcut-2" class="shortcut-select">
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+
+          <div class="shortcut-item">
+            <label>
+              <kbd>Alt</kbd> + <kbd>3</kbd>
+            </label>
+            <select id="shortcut-3" class="shortcut-select">
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <strong>ℹ️ More Shortcuts:</strong>
+          <ul>
+            <li><kbd>Alt</kbd> + <kbd>E</kbd> - Enhance current prompt</li>
+            <li><kbd>Alt</kbd> + <kbd>C</kbd> - Quick edit custom instructions</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- API Configuration Section -->
+      <section class="settings-section">
+        <h2 class="section-title">API Configuration</h2>
+        <p class="section-description">
+          Use your own Gemini API key for AI-powered enhancements (BYOK - Bring Your Own Key).
+        </p>
+
+        <div class="subscription-card">
+          <div class="subscription-header">
+            <span class="subscription-badge" id="subscription-badge">Free Tier</span>
+            <span class="subscription-status" id="subscription-status">Using rule-based enhancement</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="gemini-api-key">
+            Gemini API Key
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="external-link">
+              Get API Key →
+            </a>
+          </label>
+          <div class="input-with-button">
+            <input
+              type="password"
+              id="gemini-api-key"
+              placeholder="AIza..."
+              autocomplete="off"
+            >
+            <button type="button" id="toggle-api-key" class="icon-button" title="Show/Hide API Key">
+              <span id="eye-icon">👁️</span>
+            </button>
+          </div>
+          <small class="help-text">
+            Your API key is stored securely in your browser and never shared.
+          </small>
+        </div>
+
+        <div class="button-group">
+          <button id="save-api-key" class="btn btn-primary">Save API Key</button>
+          <button id="remove-api-key" class="btn btn-secondary" style="display: none;">Remove API Key</button>
+        </div>
+
+        <div id="api-key-status" class="status-message" style="display: none;"></div>
+      </section>
+
+      <!-- General Settings Section -->
+      <section class="settings-section">
+        <h2 class="section-title">General Settings</h2>
+
+        <div class="settings-grid">
+          <div class="form-group">
+            <label for="enhancement-level">Enhancement Level</label>
+            <select id="enhancement-level" class="select-input">
+              <option value="light">Light - Minimal changes</option>
+              <option value="moderate">Moderate - Balanced</option>
+              <option value="aggressive">Aggressive - Maximum detail</option>
+            </select>
+            <small class="help-text">
+              Controls how much the enhancement modifies your original prompt
+            </small>
+          </div>
+
+          <div class="form-group">
+            <label for="context-window">Context Window (messages)</label>
+            <input
+              type="number"
+              id="context-window"
+              class="number-input"
+              min="1"
+              max="20"
+              value="10"
+            >
+            <small class="help-text">
+              Number of previous conversation messages to consider
+            </small>
+          </div>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="auto-enhance" class="checkbox-input">
+            <span>Auto-enhance when focusing on input field</span>
+          </label>
+
+          <label class="checkbox-label">
+            <input type="checkbox" id="show-diff" class="checkbox-input" checked>
+            <span>Show changes diff view (visual comparison)</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Platform Configuration Section -->
+      <section class="settings-section">
+        <h2 class="section-title">Platform Support</h2>
+        <p class="section-description">
+          Extension works on these AI platforms automatically.
+        </p>
+
+        <div class="platforms-grid">
+          <div class="platform-card">
+            <div class="platform-status active">✓</div>
+            <div class="platform-name">ChatGPT</div>
+          </div>
+          <div class="platform-card">
+            <div class="platform-status active">✓</div>
+            <div class="platform-name">Claude</div>
+          </div>
+          <div class="platform-card">
+            <div class="platform-status coming-soon">⏳</div>
+            <div class="platform-name">Gemini</div>
+          </div>
+          <div class="platform-card">
+            <div class="platform-status coming-soon">⏳</div>
+            <div class="platform-name">Poe</div>
+          </div>
+          <div class="platform-card">
+            <div class="platform-status coming-soon">⏳</div>
+            <div class="platform-name">Perplexity</div>
+          </div>
+        </div>
+
+        <button id="add-custom-platform" class="btn btn-outline">
+          ➕ Add Custom Platform
+        </button>
+      </section>
+
+      <!-- Usage Statistics Section -->
+      <section class="settings-section">
+        <h2 class="section-title">Usage Statistics</h2>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="total-enhancements">0</div>
+            <div class="stat-label">Total Enhancements</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="byok-enhancements">0</div>
+            <div class="stat-label">BYOK Enhancements</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="free-enhancements">0</div>
+            <div class="stat-label">Free Tier Enhancements</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Save Button -->
+      <div class="save-section">
+        <button id="save-all-settings" class="btn btn-large btn-primary">
+          💾 Save All Settings
+        </button>
+        <p class="save-hint">Changes are saved automatically for most settings</p>
+      </div>
+
+      <!-- Support Section -->
+      <section class="settings-section">
+        <h2 class="section-title">Support & Resources</h2>
+
+        <div class="support-links">
+          <a href="#" class="support-link">📖 Documentation</a>
+          <a href="#" class="support-link">🐛 Report Issue</a>
+          <a href="#" class="support-link">💬 Send Feedback</a>
+          <a href="https://github.com/yourusername/prompt-enhancer-extension" target="_blank" class="support-link">⭐ Star on GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="options-footer">
+      <p>AI Prompt Enhancer v0.1.0 | Made with ❤️</p>
+    </footer>
+
+    <!-- Status Toast -->
+    <div id="status-toast" class="status-toast" style="display: none;"></div>
+  </div>
+
+  <script src="options.js" type="module"></script>
+</body>
+</html>

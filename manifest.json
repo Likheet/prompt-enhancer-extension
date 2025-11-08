@@ -44,6 +44,8 @@
     }
   },
 
+  "options_page": "src/options/options.html",
+
   "icons": {
     "16": "assets/icons/icon-16.png",
     "48": "assets/icons/icon-48.png",
