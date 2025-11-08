@@ -1,0 +1,354 @@
+/**
+ * Popup Script
+ * Handles settings and subscription management UI
+ */
+
+import browserCompat from '../shared/browser-compat.js';
+import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../shared/constants.js';
+
+class PopupController {
+  constructor() {
+    this.settings = null;
+    this.subscription = null;
+    this.init();
+  }
+
+  async init() {
+    await this.loadData();
+    this.setupEventListeners();
+    this.updateUI();
+  }
+
+  /**
+   * Load settings and subscription data
+   */
+  async loadData() {
+    try {
+      // Load settings
+      const settingsResponse = await browserCompat.sendMessage({
+        action: 'getSettings'
+      });
+      this.settings = settingsResponse || DEFAULT_SETTINGS;
+
+      // Load subscription info
+      const subResponse = await browserCompat.sendMessage({
+        action: 'getSubscriptionInfo'
+      });
+      this.subscription = subResponse;
+
+      // Load usage stats
+      const stats = await browserCompat.sendMessage({
+        action: 'getUsageStats'
+      });
+      this.updateStats(stats);
+    } catch (error) {
+      console.error('[APE Popup] Failed to load data:', error);
+    }
+  }
+
+  /**
+   * Setup event listeners
+   */
+  setupEventListeners() {
+    // BYOK toggle
+    document.getElementById('toggle-byok')?.addEventListener('click', () => {
+      this.toggleBYOKConfig();
+    });
+
+    // Save API key
+    document.getElementById('save-api-key')?.addEventListener('click', () => {
+      this.saveAPIKey();
+    });
+
+    // Remove API key
+    document.getElementById('remove-api-key')?.addEventListener('click', () => {
+      this.removeAPIKey();
+    });
+
+    // Toggle key visibility
+    document.getElementById('toggle-key-visibility')?.addEventListener('click', () => {
+      this.toggleKeyVisibility();
+    });
+
+    // Save settings
+    document.getElementById('save-settings')?.addEventListener('click', () => {
+      this.saveSettings();
+    });
+
+    // Load current settings into form
+    this.loadSettingsIntoForm();
+  }
+
+  /**
+   * Update UI based on subscription status
+   */
+  updateUI() {
+    const subscriptionType = document.getElementById('subscription-type');
+    const subscriptionDesc = document.getElementById('subscription-desc');
+    const removeKeyBtn = document.getElementById('remove-api-key');
+    const apiKeyInput = document.getElementById('gemini-api-key');
+
+    if (this.subscription?.type === 'byok') {
+      subscriptionType.textContent = '🚀 BYOK Tier';
+      subscriptionDesc.textContent = 'AI-powered enhancements with Gemini API';
+
+      // Show remove button
+      removeKeyBtn?.classList.remove('hidden');
+
+      // Show masked API key
+      if (this.subscription.apiKeyMasked && apiKeyInput) {
+        apiKeyInput.placeholder = this.subscription.apiKeyMasked;
+      }
+    } else {
+      subscriptionType.textContent = '⚡ Free Tier';
+      subscriptionDesc.textContent = 'Rule-based prompt enhancement with basic features';
+
+      // Hide remove button
+      removeKeyBtn?.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Toggle BYOK configuration panel
+   */
+  toggleBYOKConfig() {
+    const configPanel = document.getElementById('byok-config');
+    configPanel?.classList.toggle('hidden');
+
+    const toggleBtn = document.getElementById('toggle-byok');
+    if (toggleBtn) {
+      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Setup' : 'Hide';
+    }
+  }
+
+  /**
+   * Save API key
+   */
+  async saveAPIKey() {
+    const apiKeyInput = document.getElementById('gemini-api-key');
+    const apiKey = apiKeyInput?.value?.trim();
+
+    if (!apiKey) {
+      this.showStatus('Please enter an API key', 'error');
+      return;
+    }
+
+    const saveBtn = document.getElementById('save-api-key');
+    if (saveBtn) {
+      saveBtn.textContent = 'Validating...';
+      saveBtn.disabled = true;
+    }
+
+    try {
+      const response = await browserCompat.sendMessage({
+        action: 'activateBYOK',
+        data: { apiKey }
+      });
+
+      if (response.success) {
+        this.showStatus('✓ BYOK activated successfully!', 'success');
+
+        // Clear input
+        if (apiKeyInput) apiKeyInput.value = '';
+
+        // Reload data and update UI
+        await this.loadData();
+        this.updateUI();
+
+        // Hide config panel after success
+        setTimeout(() => {
+          this.toggleBYOKConfig();
+        }, 2000);
+      } else {
+        this.showStatus(`Failed: ${response.error || 'Unknown error'}`, 'error');
+      }
+    } catch (error) {
+      console.error('[APE Popup] Save API key error:', error);
+      this.showStatus('Failed to save API key', 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.textContent = 'Save Key';
+        saveBtn.disabled = false;
+      }
+    }
+  }
+
+  /**
+   * Remove API key and return to free tier
+   */
+  async removeAPIKey() {
+    if (!confirm('Remove API key and return to Free tier?')) {
+      return;
+    }
+
+    try {
+      const response = await browserCompat.sendMessage({
+        action: 'deactivateBYOK'
+      });
+
+      if (response.success) {
+        this.showStatus('✓ Returned to Free tier', 'success');
+
+        // Reload data and update UI
+        await this.loadData();
+        this.updateUI();
+      } else {
+        this.showStatus('Failed to remove API key', 'error');
+      }
+    } catch (error) {
+      console.error('[APE Popup] Remove API key error:', error);
+      this.showStatus('Failed to remove API key', 'error');
+    }
+  }
+
+  /**
+   * Toggle API key visibility
+   */
+  toggleKeyVisibility() {
+    const apiKeyInput = document.getElementById('gemini-api-key');
+    const toggleBtn = document.getElementById('toggle-key-visibility');
+
+    if (apiKeyInput && toggleBtn) {
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        toggleBtn.textContent = '🙈';
+      } else {
+        apiKeyInput.type = 'password';
+        toggleBtn.textContent = '👁️';
+      }
+    }
+  }
+
+  /**
+   * Load settings into form
+   */
+  loadSettingsIntoForm() {
+    if (!this.settings) return;
+
+    const enhancementLevel = document.getElementById('enhancement-level');
+    const contextWindow = document.getElementById('context-window');
+    const autoEnhance = document.getElementById('auto-enhance');
+    const showDiff = document.getElementById('show-diff');
+
+    if (enhancementLevel) enhancementLevel.value = this.settings.enhancementLevel;
+    if (contextWindow) contextWindow.value = this.settings.contextWindow;
+    if (autoEnhance) autoEnhance.checked = this.settings.autoEnhance;
+    if (showDiff) showDiff.checked = this.settings.showDiff;
+  }
+
+  /**
+   * Save settings
+   */
+  async saveSettings() {
+    const enhancementLevel = document.getElementById('enhancement-level')?.value;
+    const contextWindow = parseInt(document.getElementById('context-window')?.value);
+    const autoEnhance = document.getElementById('auto-enhance')?.checked;
+    const showDiff = document.getElementById('show-diff')?.checked;
+
+    const newSettings = {
+      ...this.settings,
+      enhancementLevel,
+      contextWindow,
+      autoEnhance,
+      showDiff
+    };
+
+    const saveBtn = document.getElementById('save-settings');
+    if (saveBtn) {
+      saveBtn.textContent = 'Saving...';
+      saveBtn.disabled = true;
+    }
+
+    try {
+      await browserCompat.sendMessage({
+        action: 'saveSettings',
+        data: { settings: newSettings }
+      });
+
+      this.settings = newSettings;
+      this.showGeneralSuccess('Settings saved successfully!');
+    } catch (error) {
+      console.error('[APE Popup] Save settings error:', error);
+      this.showGeneralError('Failed to save settings');
+    } finally {
+      if (saveBtn) {
+        saveBtn.textContent = 'Save Settings';
+        saveBtn.disabled = false;
+      }
+    }
+  }
+
+  /**
+   * Update usage statistics
+   */
+  updateStats(stats) {
+    if (!stats) return;
+
+    const totalElem = document.getElementById('total-enhancements');
+    const byokElem = document.getElementById('byok-enhancements');
+
+    if (totalElem) totalElem.textContent = stats.totalEnhancements || 0;
+    if (byokElem) byokElem.textContent = stats.byokEnhancements || 0;
+  }
+
+  /**
+   * Show status message
+   */
+  showStatus(message, type) {
+    const statusElem = document.getElementById('api-key-status');
+
+    if (statusElem) {
+      statusElem.textContent = message;
+      statusElem.className = `status-message ${type}`;
+      statusElem.classList.remove('hidden');
+
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        statusElem.classList.add('hidden');
+      }, 5000);
+    }
+  }
+
+  /**
+   * Show general success message (temporary)
+   */
+  showGeneralSuccess(message) {
+    const saveBtn = document.getElementById('save-settings');
+    if (saveBtn) {
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = message;
+      saveBtn.style.background = '#10b981';
+
+      setTimeout(() => {
+        saveBtn.textContent = originalText;
+        saveBtn.style.background = '';
+      }, 2000);
+    }
+  }
+
+  /**
+   * Show general error message (temporary)
+   */
+  showGeneralError(message) {
+    const saveBtn = document.getElementById('save-settings');
+    if (saveBtn) {
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = message;
+      saveBtn.style.background = '#ef4444';
+
+      setTimeout(() => {
+        saveBtn.textContent = originalText;
+        saveBtn.style.background = '';
+      }, 2000);
+    }
+  }
+}
+
+// Initialize popup when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    new PopupController();
+  });
+} else {
+  new PopupController();
+}

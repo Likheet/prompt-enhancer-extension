@@ -1,0 +1,28 @@
+{
+  "name": "ai-prompt-enhancer",
+  "version": "0.1.0",
+  "description": "Context-aware prompt enhancement for AI chat interfaces",
+  "scripts": {
+    "build": "node build/build.js",
+    "watch": "node build/build.js --watch",
+    "test": "jest",
+    "lint": "eslint src/**/*.js"
+  },
+  "keywords": [
+    "ai",
+    "chatgpt",
+    "claude",
+    "prompt",
+    "enhancement",
+    "browser-extension"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.0.6"
+  }
+}
