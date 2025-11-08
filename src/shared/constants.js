@@ -19,6 +19,15 @@ export const ENHANCEMENT_LEVELS = {
   AGGRESSIVE: 'aggressive'
 };
 
+export const ENHANCEMENT_PRESETS = {
+  CONCISE: 'concise',
+  DETAILED: 'detailed',
+  BALANCED: 'balanced',
+  TECHNICAL: 'technical',
+  CREATIVE: 'creative',
+  CUSTOM: 'custom'
+};
+
 export const STORAGE_KEYS = {
   SETTINGS: 'enhancerSettings',
   SUBSCRIPTION: 'subscription',
@@ -29,10 +38,17 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SETTINGS = {
   subscriptionType: SUBSCRIPTION_TYPES.FREE,
   enhancementLevel: ENHANCEMENT_LEVELS.MODERATE,
+  currentEnhancementType: ENHANCEMENT_PRESETS.BALANCED,
+  customEnhancementPrompt: '',
   contextWindow: 10,
   autoEnhance: false,
   showDiff: true,
-  geminiApiKey: null
+  geminiApiKey: null,
+  shortcuts: {
+    'Alt+1': ENHANCEMENT_PRESETS.CONCISE,
+    'Alt+2': ENHANCEMENT_PRESETS.BALANCED,
+    'Alt+3': ENHANCEMENT_PRESETS.DETAILED
+  }
 };
 
 export const GEMINI_API = {

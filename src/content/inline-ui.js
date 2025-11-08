@@ -6,6 +6,7 @@
 import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES } from '../shared/constants.js';
 import { copyToClipboard, generateId } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
+import EnhancementPresets from './enhancement-presets.js';
 
 class InlineUI {
   constructor(enhancer, extractor, domObserver, settings) {
@@ -18,6 +19,7 @@ class InlineUI {
     this.enhancedPrompt = null;
     this.isProcessing = false;
     this.buttonId = `ape-inline-btn-${generateId()}`;
+    this.presets = new EnhancementPresets();
 
     this.init();
   }
@@ -320,17 +322,23 @@ class InlineUI {
    * Enhance prompt using current settings
    */
   async enhancePrompt(context, enhancementType, settings) {
-    // For now, use the existing enhancer
-    // In Phase 2, we'll integrate the preset system
+    // Use the preset system
+    const customPrompt = enhancementType === 'custom' ? settings.customEnhancementPrompt : null;
 
-    // Check if we should use a preset (Phase 2 feature)
-    if (enhancementType === 'custom' && settings.customEnhancementPrompt) {
-      // TODO: Implement custom enhancement in Phase 2
+    try {
+      const enhanced = await this.presets.enhanceWithPreset(
+        context,
+        enhancementType || 'balanced',
+        customPrompt
+      );
+
+      return enhanced;
+    } catch (error) {
+      console.error('[InlineUI] Enhancement error:', error);
+
+      // Fallback to basic enhancement
       return await this.enhancer.enhancePrompt(context);
     }
-
-    // Use existing enhancement logic
-    return await this.enhancer.enhancePrompt(context);
   }
 
   /**
