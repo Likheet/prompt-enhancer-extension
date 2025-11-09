@@ -9,7 +9,6 @@ import PromptEnhancer from './prompt-enhancer.js';
 import InlineUI from './inline-ui.js';
 import KeyboardShortcuts from './keyboard-shortcuts.js';
 import browserCompat from '../shared/browser-compat.js';
-import subscriptionManager from '../background/subscription-manager.js';
 
 class AIPromptEnhancerExtension {
   constructor() {

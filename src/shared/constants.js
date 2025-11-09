@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS = {
 
 export const GEMINI_API = {
   BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-  MODEL: 'gemini-pro',
+  MODEL: 'gemini-2.0-flash',  // Updated from gemini-1.5-flash (deprecated)
   MAX_RETRIES: 3,
   TIMEOUT: 10000
 };

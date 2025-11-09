@@ -4,6 +4,8 @@
  */
 
 import browserCompat from '../shared/browser-compat.js';
+import { GEMINI_API, ERROR_MESSAGES } from '../shared/constants.js';
+import { TEST_MODE_ENABLED, HARDCODED_API_KEY } from '../shared/test-config.js';
 
 class EnhancementPresets {
   constructor() {
@@ -140,18 +142,19 @@ Return ONLY the enhanced prompt without any explanation.`,
   async enhanceWithPreset(context, presetKey, customPrompt = null) {
     const preset = this.getPreset(presetKey);
 
-    // Check if BYOK is available
+    // Check if an API key is available (settings or test mode)
     const settings = await this.getSettings();
     const subscription = await this.getSubscription();
 
-    // Determine if we should use AI enhancement
-    const useAI = subscription.type === 'byok' && settings.geminiKey;
+    const apiKey = settings.geminiKey
+      || subscription?.apiKey
+      || (TEST_MODE_ENABLED ? HARDCODED_API_KEY : null);
 
-    if (useAI) {
-      return await this.enhanceWithAI(context, preset, presetKey, customPrompt, settings.geminiKey);
-    } else {
-      return await this.enhanceWithRules(context, preset);
+    if (apiKey) {
+      return await this.enhanceWithAI(context, preset, presetKey, customPrompt, apiKey);
     }
+
+    return await this.enhanceWithRules(context, preset);
   }
 
   /**
@@ -162,10 +165,6 @@ Return ONLY the enhanced prompt without any explanation.`,
       ? customPrompt
       : preset.systemPrompt;
 
-    if (!systemPrompt) {
-      throw new Error('No enhancement prompt defined');
-    }
-
     const enhancementRequest = this.buildEnhancementRequest(
       systemPrompt,
       context
@@ -173,7 +172,7 @@ Return ONLY the enhanced prompt without any explanation.`,
 
     try {
       const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`,
         {
           method: 'POST',
           headers: {
@@ -195,7 +194,7 @@ Return ONLY the enhanced prompt without any explanation.`,
       );
 
       if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
+        throw new Error(`${ERROR_MESSAGES.API_ERROR} (status ${response.status})`);
       }
 
       const data = await response.json();
@@ -214,40 +213,8 @@ Return ONLY the enhanced prompt without any explanation.`,
    * Build enhancement request for AI
    */
   buildEnhancementRequest(systemPrompt, context) {
-    let request = `${systemPrompt}\n\n`;
-
-    // Add conversation context if available
-    if (context.conversationHistory && context.conversationHistory.length > 0) {
-      request += `CONVERSATION CONTEXT:\n`;
-      const recentMessages = context.conversationHistory.slice(-3);
-      recentMessages.forEach((msg, idx) => {
-        const preview = msg.content.substring(0, 150);
-        request += `${idx + 1}. [${msg.role}]: ${preview}${msg.content.length > 150 ? '...' : ''}\n`;
-      });
-      request += `\n`;
-    }
-
-    // Add metadata
-    if (context.metadata) {
-      request += `CONTEXT INFO:\n`;
-      if (context.metadata.topic) {
-        request += `- Topic: ${context.metadata.topic}\n`;
-      }
-      if (context.metadata.hasCode) {
-        request += `- Contains code/technical content\n`;
-      }
-      if (context.metadata.language && context.metadata.language !== 'general') {
-        request += `- Language/Type: ${context.metadata.language}\n`;
-      }
-      request += `\n`;
-    }
-
-    // Add the actual prompt
-    request += `ORIGINAL PROMPT:\n${context.currentPrompt}\n\n`;
-
-    request += `ENHANCED PROMPT:`;
-
-    return request;
+    const promptText = context.currentPrompt || '';
+    return `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):\n\n${promptText}`;
   }
 
   /**
@@ -292,7 +259,7 @@ Return ONLY the enhanced prompt without any explanation.`,
       structured: () => enhancer.structurePrompt(context.currentPrompt, context),
       technical: () => enhancer.enhanceTechnical(context.currentPrompt, context),
       creative: () => enhancer.enhanceCreative(context.currentPrompt, context),
-      general: () => enhancer.basicEnhancement(context)
+      general: () => enhancer.enhanceGeneral(context.currentPrompt, context)
     };
 
     const enhanceFn = strategies[strategy] || strategies.general;
@@ -304,7 +271,7 @@ Return ONLY the enhanced prompt without any explanation.`,
    */
   async getSettings() {
     try {
-      const result = await browserCompat.storage_get(['enhancerSettings']);
+      const result = await browserCompat.storageGet(['enhancerSettings']);
       return result.enhancerSettings || {};
     } catch (error) {
       console.error('[EnhancementPresets] Failed to get settings:', error);

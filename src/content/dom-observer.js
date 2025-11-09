@@ -215,27 +215,27 @@ class ResilientDOMObserver {
     if (!inputElement) return false;
 
     try {
+      const setNativeValue = (element, value) => {
+        const { set: valueSetter } = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value') || {};
+        if (valueSetter) {
+          valueSetter.call(element, value);
+        } else {
+          element.value = value;
+        }
+      };
+
       // Clear existing content first
       if (inputElement.tagName === 'TEXTAREA' || inputElement.tagName === 'INPUT') {
         // For textarea/input
-        inputElement.value = '';
+        setNativeValue(inputElement, '');
         inputElement.focus();
 
         // Simulate typing for better compatibility
-        inputElement.value = enhancedText;
+        setNativeValue(inputElement, enhancedText);
 
         // Trigger input events
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-
-        // Platform-specific events
-        if (this.platform === PLATFORMS.CHATGPT) {
-          inputElement.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Enter',
-            code: 'Enter',
-            bubbles: true
-          }));
-        }
       } else if (inputElement.contentEditable === 'true') {
         // For contenteditable
         inputElement.focus();

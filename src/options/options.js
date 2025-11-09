@@ -6,6 +6,7 @@
 import EnhancementPresets from '../content/enhancement-presets.js';
 import { DEFAULT_SETTINGS, ENHANCEMENT_PRESETS, STORAGE_KEYS } from '../shared/constants.js';
 import browserCompat from '../shared/browser-compat.js';
+import { TEST_MODE_ENABLED, HARDCODED_API_KEY, VERBOSE_LOGGING } from '../shared/test-config.js';
 
 class OptionsPage {
   constructor() {
@@ -162,6 +163,13 @@ class OptionsPage {
     if (apiKeyInput) {
       apiKeyInput.value = this.settings.geminiKey || '';
 
+      // TEST MODE: Pre-fill with hardcoded key if in test mode
+      if (TEST_MODE_ENABLED && !this.settings.geminiKey) {
+        console.log('[Options TEST MODE] Pre-filling with hardcoded API key');
+        apiKeyInput.value = HARDCODED_API_KEY;
+        this.settings.geminiKey = HARDCODED_API_KEY;
+      }
+
       // Show/hide remove button
       const removeBtn = document.getElementById('remove-api-key');
       if (this.settings.geminiKey) {
@@ -171,6 +179,15 @@ class OptionsPage {
         removeBtn.style.display = 'none';
         this.updateSubscriptionStatus(false);
       }
+    }
+
+    // Add test mode indicator if enabled
+    if (TEST_MODE_ENABLED) {
+      const testModeIndicator = document.createElement('div');
+      testModeIndicator.style.cssText = 'background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 4px; border: 1px solid #ffc107; font-weight: bold; color: #856404;';
+      testModeIndicator.textContent = '⚠️ TEST MODE ENABLED - Using hardcoded API key for testing';
+      const container = document.querySelector('.settings-container') || document.body;
+      container.insertBefore(testModeIndicator, container.firstChild);
     }
   }
 

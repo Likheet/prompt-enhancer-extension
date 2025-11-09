@@ -337,7 +337,8 @@ class InlineUI {
       console.error('[InlineUI] Enhancement error:', error);
 
       // Fallback to basic enhancement
-      return await this.enhancer.enhancePrompt(context);
+      const fallback = await this.enhancer.enhancePrompt(context, settings);
+      return fallback.enhanced;
     }
   }
 
@@ -374,7 +375,7 @@ class InlineUI {
       });
 
       // Update usage stats
-      const stats = await browserCompat.storage_get(['usageStats']) || {};
+      const stats = await browserCompat.storageGet(['usageStats']) || {};
       const usageStats = stats.usageStats || { totalEnhancements: 0, byokEnhancements: 0 };
 
       usageStats.totalEnhancements++;
@@ -384,7 +385,7 @@ class InlineUI {
         usageStats.byokEnhancements++;
       }
 
-      await browserCompat.storage_set({ usageStats });
+      await browserCompat.storageSet({ usageStats });
     } catch (error) {
       console.error('[APE InlineUI] Failed to track enhancement:', error);
     }
