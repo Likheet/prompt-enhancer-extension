@@ -104,8 +104,25 @@ class InlineUI {
     // Create button
     this.currentButton = this.createEnhanceButton();
 
-    // Position button based on platform
-    this.positionButton(container, inputArea);
+    // Check for saved position preference
+    const settings = await this.getSettings();
+    const savedPosition = settings.buttonPosition;
+
+    if (savedPosition && savedPosition.preset) {
+      // Apply saved preset position
+      Object.assign(this.currentButton.style, {
+        position: 'fixed',
+        left: savedPosition.left || 'auto',
+        right: savedPosition.right || 'auto',
+        top: savedPosition.top || 'auto',
+        bottom: savedPosition.bottom || 'auto',
+        zIndex: '9999'
+      });
+      document.body.appendChild(this.currentButton);
+    } else {
+      // Use platform-specific default positioning
+      this.positionButton(container, inputArea);
+    }
 
     console.log('[APE InlineUI] Button attached successfully');
   }
@@ -175,74 +192,545 @@ class InlineUI {
       this.handleEnhanceClick();
     });
 
+    button.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.showContextMenu(e);
+    });
+
     return button;
+  }
+
+  /**
+   * Show context menu on right-click
+   */
+  async showContextMenu(event) {
+    // Remove any existing context menu
+    const existingMenu = document.getElementById('ape-context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    const settings = await this.getSettings();
+    const currentTemplate = settings.promptTemplateType || 'standard';
+
+    // Create context menu
+    const menu = document.createElement('div');
+    menu.id = 'ape-context-menu';
+    menu.className = 'ape-context-menu';
+
+    menu.innerHTML = `
+      <div class="ape-context-menu-header">
+        <span>✨ Prompt Templates</span>
+      </div>
+      <div class="ape-context-menu-section">
+        <button class="ape-context-menu-item ${currentTemplate === 'standard' ? 'active' : ''}" data-template="standard">
+          <span class="ape-context-menu-emoji">⚡</span>
+          <span class="ape-context-menu-text">Direct Enhancer</span>
+          ${currentTemplate === 'standard' ? '<span class="ape-context-menu-check">✓</span>' : ''}
+        </button>
+        <button class="ape-context-menu-item ${currentTemplate === 'structured' ? 'active' : ''}" data-template="structured">
+          <span class="ape-context-menu-emoji">🧭</span>
+          <span class="ape-context-menu-text">Structured Blueprint</span>
+          ${currentTemplate === 'structured' ? '<span class="ape-context-menu-check">✓</span>' : ''}
+        </button>
+      </div>
+      <div class="ape-context-menu-divider"></div>
+      <div class="ape-context-menu-section">
+        <div class="ape-context-menu-label">Button Position</div>
+        <button class="ape-context-menu-item" data-action="position-bottom-left">
+          <span class="ape-context-menu-emoji">↙️</span>
+          <span class="ape-context-menu-text">Bottom Left</span>
+        </button>
+        <button class="ape-context-menu-item" data-action="position-bottom-right">
+          <span class="ape-context-menu-emoji">↘️</span>
+          <span class="ape-context-menu-text">Bottom Right</span>
+        </button>
+        <button class="ape-context-menu-item" data-action="position-top-left">
+          <span class="ape-context-menu-emoji">↖️</span>
+          <span class="ape-context-menu-text">Top Left</span>
+        </button>
+        <button class="ape-context-menu-item" data-action="position-top-right">
+          <span class="ape-context-menu-emoji">↗️</span>
+          <span class="ape-context-menu-text">Top Right</span>
+        </button>
+      </div>
+      <div class="ape-context-menu-divider"></div>
+      <button class="ape-context-menu-item" data-action="open-settings">
+        <span class="ape-context-menu-emoji">⚙️</span>
+        <span class="ape-context-menu-text">Open Settings</span>
+      </button>
+    `;
+
+    // Position menu near click
+    menu.style.position = 'fixed';
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.zIndex = '10000';
+
+    document.body.appendChild(menu);
+
+    // Adjust position if menu goes off screen
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${event.clientX - rect.width}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${event.clientY - rect.height}px`;
+    }
+
+    // Handle menu item clicks
+    menu.addEventListener('click', async (e) => {
+      const button = e.target.closest('.ape-context-menu-item');
+      if (!button) return;
+
+      const template = button.dataset.template;
+      const action = button.dataset.action;
+
+      if (template) {
+        // Change template
+        await this.changeTemplate(template);
+        this.showToast(`Switched to ${template === 'standard' ? 'Direct Enhancer' : 'Structured Blueprint'}`, 'success');
+        menu.remove();
+      } else if (action?.startsWith('position-')) {
+        // Change button position
+        const position = action.replace('position-', '');
+        await this.changeButtonPosition(position);
+        menu.remove();
+      } else if (action === 'open-settings') {
+        browserCompat.sendMessage({ action: 'openOptions' });
+        menu.remove();
+      }
+    });
+
+    // Close menu on outside click
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  }
+
+  /**
+   * Change prompt template
+   */
+  async changeTemplate(templateType) {
+    try {
+      const settings = await this.getSettings();
+      settings.promptTemplateType = templateType;
+
+      await browserCompat.storageSet({
+        enhancerSettings: settings
+      });
+
+      // Update cached settings
+      this.settings = settings;
+    } catch (error) {
+      console.error('[InlineUI] Failed to change template:', error);
+    }
+  }
+
+  /**
+   * Change button position to fixed quadrant
+   */
+  async changeButtonPosition(position) {
+    if (!this.currentButton) return;
+
+    const positions = {
+      'bottom-left': { left: '20px', bottom: '100px', right: 'auto', top: 'auto' },
+      'bottom-right': { right: '20px', bottom: '100px', left: 'auto', top: 'auto' },
+      'top-left': { left: '20px', top: '20px', right: 'auto', bottom: 'auto' },
+      'top-right': { right: '20px', top: '20px', left: 'auto', bottom: 'auto' }
+    };
+
+    const coords = positions[position];
+    if (!coords) return;
+
+    // Apply new position
+    Object.assign(this.currentButton.style, coords);
+
+    // Save to settings
+    try {
+      const settings = await this.getSettings();
+      settings.buttonPosition = {
+        preset: position,
+        ...coords,
+        isCustom: false
+      };
+
+      await browserCompat.storageSet({
+        enhancerSettings: settings
+      });
+
+      this.settings = settings;
+      this.showToast(`Button moved to ${position.replace('-', ' ')}`, 'success');
+    } catch (error) {
+      console.error('[InlineUI] Failed to save button position:', error);
+    }
+  }
+
+  /**
+   * Enable button movement mode (DEPRECATED - too buggy)
+   */
+  async enableButtonMovement() {
+    if (!this.currentButton) return;
+
+    this.showToast('Drag the button to reposition it. Press ESC to cancel.', 'info');
+
+    // Find the input container for relative positioning
+    const inputArea = await this.domObserver.findInputElement();
+    const container = inputArea ? this.findInputContainer(inputArea) : null;
+
+    // Temporarily switch to fixed positioning for dragging
+    const originalParent = this.currentButton.parentElement;
+    const wasAbsolute = this.currentButton.style.position === 'absolute';
+    
+    if (wasAbsolute && originalParent && originalParent !== document.body) {
+      // Preserve position during drag
+      const rect = this.currentButton.getBoundingClientRect();
+      document.body.appendChild(this.currentButton);
+      this.currentButton.style.position = 'fixed';
+      this.currentButton.style.left = `${rect.left}px`;
+      this.currentButton.style.top = `${rect.top}px`;
+    } else {
+      this.currentButton.style.position = 'fixed';
+    }
+
+    this.currentButton.style.cursor = 'move';
+    this.currentButton.style.boxShadow = '0 0 0 3px rgba(102, 126, 234, 0.5)';
+    this.currentButton.style.zIndex = '10001';
+    this.currentButton.style.right = 'auto';
+    this.currentButton.style.bottom = 'auto';
+
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const handleMouseDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      isDragging = true;
+      const rect = this.currentButton.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+
+      this.currentButton.style.opacity = '0.8';
+    };
+
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+
+      e.preventDefault();
+      
+      const x = e.clientX - offsetX;
+      const y = e.clientY - offsetY;
+
+      // Keep button within viewport bounds
+      const maxX = window.innerWidth - this.currentButton.offsetWidth;
+      const maxY = window.innerHeight - this.currentButton.offsetHeight;
+
+      const boundedX = Math.max(0, Math.min(x, maxX));
+      const boundedY = Math.max(0, Math.min(y, maxY));
+
+      this.currentButton.style.left = `${boundedX}px`;
+      this.currentButton.style.top = `${boundedY}px`;
+    };
+
+    const handleMouseUp = async (e) => {
+      if (!isDragging) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      isDragging = false;
+      this.currentButton.style.opacity = '1';
+
+      // Calculate relative position to container if available
+      const buttonRect = this.currentButton.getBoundingClientRect();
+      
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        
+        // Calculate distances from all edges
+        const left = buttonRect.left - containerRect.left;
+        const right = containerRect.right - buttonRect.right;
+        const top = buttonRect.top - containerRect.top;
+        const bottom = containerRect.bottom - buttonRect.bottom;
+
+        // Determine which edges to use (closest ones)
+        const useRight = right < left;
+        const useBottom = bottom < top;
+
+        const positionData = {
+          x: buttonRect.left,
+          y: buttonRect.top,
+          isCustom: true,
+          relativeToContainer: true,
+          left: useRight ? 'auto' : `${Math.max(0, left)}px`,
+          right: useRight ? `${Math.max(0, right)}px` : 'auto',
+          top: useBottom ? 'auto' : `${Math.max(0, top)}px`,
+          bottom: useBottom ? `${Math.max(0, bottom)}px` : 'auto'
+        };
+
+        await this.saveButtonPosition(positionData);
+        
+        // Re-attach to container with relative positioning
+        this.positionButtonRelativeToContainer(container, inputArea, positionData);
+      } else {
+        // Fallback to fixed positioning
+        await this.saveButtonPosition({ 
+          x: buttonRect.left, 
+          y: buttonRect.top, 
+          isCustom: true,
+          relativeToContainer: false
+        });
+      }
+
+      // Cleanup
+      this.currentButton.style.cursor = 'pointer';
+      this.currentButton.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+      this.currentButton.style.zIndex = container ? '100' : '1000';
+
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('keydown', handleCancel);
+
+      this.showToast('Button position saved! It will stay relative to the input area.', 'success');
+    };
+
+    const handleCancel = (e) => {
+      if (e.key === 'Escape') {
+        isDragging = false;
+        this.currentButton.style.cursor = 'pointer';
+        this.currentButton.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+        this.currentButton.style.opacity = '1';
+        this.currentButton.style.zIndex = '1000';
+
+        document.removeEventListener('mousedown', handleMouseDown);
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('keydown', handleCancel);
+
+        this.showToast('Button movement cancelled', 'info');
+      }
+    };
+
+    // Add event listeners
+    this.currentButton.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('keydown', handleCancel);
+  }
+
+  /**
+   * Save button position to storage
+   */
+  async saveButtonPosition(position) {
+    try {
+      const settings = await this.getSettings();
+      settings.buttonPosition = position;
+      
+      await browserCompat.storageSet({
+        enhancerSettings: settings
+      });
+
+      this.settings = settings;
+    } catch (error) {
+      console.error('[InlineUI] Failed to save button position:', error);
+    }
+  }
+
+  /**
+   * Load and apply saved button position
+   */
+  async loadButtonPosition() {
+    try {
+      const settings = await this.getSettings();
+      const position = settings.buttonPosition;
+
+      if (position && position.isCustom && this.currentButton) {
+        console.log('[APE InlineUI] Loading custom button position:', position);
+        
+        this.currentButton.style.position = 'fixed';
+        this.currentButton.style.left = `${position.x}px`;
+        this.currentButton.style.top = `${position.y}px`;
+        this.currentButton.style.right = 'auto';
+        this.currentButton.style.bottom = 'auto';
+        this.currentButton.style.zIndex = '1000';
+        
+        console.log('[APE InlineUI] Custom position applied');
+      }
+    } catch (error) {
+      console.error('[InlineUI] Failed to load button position:', error);
+    }
+  }
+
+  /**
+   * Position button relative to container (smart positioning)
+   */
+  positionButtonRelativeToContainer(container, inputElement, savedPosition) {
+    if (!this.currentButton || !container) return;
+
+    // Make container relative if needed
+    const computedStyle = window.getComputedStyle(container);
+    if (computedStyle.position === 'static') {
+      container.style.position = 'relative';
+    }
+
+    // Append button to container for relative positioning
+    container.appendChild(this.currentButton);
+
+    // Use saved relative position or default
+    const position = savedPosition || {};
+    
+    if (position.relativeToContainer) {
+      // Apply saved relative position
+      this.currentButton.style.position = 'absolute';
+      this.currentButton.style.right = position.right || 'auto';
+      this.currentButton.style.left = position.left || 'auto';
+      this.currentButton.style.top = position.top || 'auto';
+      this.currentButton.style.bottom = position.bottom || 'auto';
+      this.currentButton.style.zIndex = '100';
+      
+      console.log('[APE InlineUI] Applied relative position:', position);
+    } else {
+      // Convert fixed position to relative position
+      this.convertFixedToRelative(container, savedPosition);
+    }
+
+    // Observe container for size/position changes to maintain relative positioning
+    this.observeContainerChanges(container);
+  }
+
+  /**
+   * Convert fixed position to relative position
+   */
+  convertFixedToRelative(container, savedPosition) {
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = this.currentButton.getBoundingClientRect();
+
+    // Calculate relative position
+    const left = savedPosition.x - containerRect.left;
+    const top = savedPosition.y - containerRect.top;
+    const right = containerRect.right - (savedPosition.x + buttonRect.width);
+    const bottom = containerRect.bottom - (savedPosition.y + buttonRect.height);
+
+    // Use right/bottom if they're smaller (button is closer to that edge)
+    this.currentButton.style.position = 'absolute';
+    
+    if (right < left) {
+      this.currentButton.style.right = `${Math.max(0, right)}px`;
+      this.currentButton.style.left = 'auto';
+    } else {
+      this.currentButton.style.left = `${Math.max(0, left)}px`;
+      this.currentButton.style.right = 'auto';
+    }
+
+    if (bottom < top) {
+      this.currentButton.style.bottom = `${Math.max(0, bottom)}px`;
+      this.currentButton.style.top = 'auto';
+    } else {
+      this.currentButton.style.top = `${Math.max(0, top)}px`;
+      this.currentButton.style.bottom = 'auto';
+    }
+
+    this.currentButton.style.zIndex = '100';
+  }
+
+  /**
+   * Observe container for changes to maintain relative positioning
+   */
+  observeContainerChanges(container) {
+    if (this.containerObserver) {
+      this.containerObserver.disconnect();
+    }
+
+    this.containerObserver = new ResizeObserver(() => {
+      // Button will naturally stay positioned relative to container
+      // This observer is for future enhancements if needed
+    });
+
+    this.containerObserver.observe(container);
   }
 
   /**
    * Position button based on platform
    */
   positionButton(container, inputElement) {
+    // Note: container parameter unused after switching to fixed positioning
+    // This is intentional - fixed positioning is simpler and more reliable
     const platform = this.domObserver.platform;
 
     // Platform-specific positioning strategies
     const positions = {
       chatgpt: () => {
-        // ChatGPT: absolute positioning relative to container
-        const parent = container.parentElement || container;
+        // ChatGPT: FIXED positioning to avoid container confusion bugs
+        // Position in bottom-left of viewport, near input area
 
-        // Make parent relative if needed
-        const computedStyle = window.getComputedStyle(parent);
-        if (computedStyle.position === 'static') {
-          parent.style.position = 'relative';
-        }
-
-        // Position button
+        // Use fixed positioning - simple and reliable
         Object.assign(this.currentButton.style, {
-          position: 'absolute',
-          right: '50px',
-          bottom: '8px',
-          zIndex: '100'
+          position: 'fixed',
+          left: '20px',
+          bottom: '100px',
+          right: 'auto',
+          top: 'auto',
+          zIndex: '9999'
         });
 
-        parent.appendChild(this.currentButton);
+        // Append to body for fixed positioning
+        document.body.appendChild(this.currentButton);
       },
 
       claude: () => {
-        // Claude: position within the fieldset/form area
-        const parent = container.parentElement || container;
-
-        // Make parent relative if needed
-        const computedStyle = window.getComputedStyle(parent);
-        if (computedStyle.position === 'static') {
-          parent.style.position = 'relative';
-        }
+        // Claude: FIXED positioning for reliability
+        // Position in bottom-left, similar to ChatGPT for consistency
 
         Object.assign(this.currentButton.style, {
-          position: 'absolute',
-          right: '50px',
-          bottom: '12px',
-          zIndex: '100'
+          position: 'fixed',
+          left: '20px',
+          bottom: '100px',
+          right: 'auto',
+          top: 'auto',
+          zIndex: '9999'
         });
 
-        parent.appendChild(this.currentButton);
+        document.body.appendChild(this.currentButton);
+      },
+
+      gemini: () => {
+        // Gemini: FIXED positioning for reliability
+        // Position in bottom-left for consistency
+
+        Object.assign(this.currentButton.style, {
+          position: 'fixed',
+          left: '20px',
+          bottom: '100px',
+          right: 'auto',
+          top: 'auto',
+          zIndex: '9999'
+        });
+
+        document.body.appendChild(this.currentButton);
       },
 
       generic: () => {
-        // Generic: try to position near send button
-        const parent = container;
-        const computedStyle = window.getComputedStyle(parent);
-        if (computedStyle.position === 'static') {
-          parent.style.position = 'relative';
-        }
+        // Generic: FIXED positioning for reliability
+        // Default bottom-left position
 
         Object.assign(this.currentButton.style, {
-          position: 'absolute',
-          right: '10px',
-          bottom: '10px',
-          zIndex: '100'
+          position: 'fixed',
+          left: '20px',
+          bottom: '100px',
+          right: 'auto',
+          top: 'auto',
+          zIndex: '9999'
         });
 
-        parent.appendChild(this.currentButton);
+        document.body.appendChild(this.currentButton);
       }
     };
 

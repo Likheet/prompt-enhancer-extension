@@ -27,6 +27,9 @@ class ResilientDOMObserver {
     if (hostname.includes('claude.ai')) {
       return PLATFORMS.CLAUDE;
     }
+    if (hostname.includes('gemini.google.com')) {
+      return PLATFORMS.GEMINI;
+    }
 
     return PLATFORMS.GENERIC;
   }
@@ -101,6 +104,42 @@ class ResilientDOMObserver {
         conversationArea: [
           'main',
           'div[class*="ConversationContainer"]'
+        ]
+      },
+
+      [PLATFORMS.GEMINI]: {
+        inputArea: [
+          'rich-textarea[placeholder*="Enter a prompt"]',
+          'rich-textarea',
+          'div[contenteditable="true"][role="textbox"]',
+          'textarea[placeholder*="Enter"]',
+          '.ql-editor[contenteditable="true"]'
+        ],
+        sendButton: [
+          'button[aria-label*="Send"]',
+          'button[mattooltip*="Send"]',
+          'button.send-button',
+          'button[type="submit"]'
+        ],
+        messageContainer: [
+          'message-content',
+          'model-response',
+          'user-query',
+          'div[class*="message"]'
+        ],
+        userMessage: [
+          'user-query',
+          'div[class*="user"]'
+        ],
+        assistantMessage: [
+          'model-response',
+          'div[class*="model"]',
+          'div[class*="assistant"]'
+        ],
+        conversationArea: [
+          'main',
+          'div[class*="conversation"]',
+          'mat-sidenav-content'
         ]
       },
 

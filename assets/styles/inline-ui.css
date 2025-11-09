@@ -144,17 +144,7 @@
    Platform-Specific Overrides
    =========================== */
 
-/* ChatGPT specific adjustments */
-body[class*="chatgpt"] .ape-inline-button,
-[data-testid*="composer"] .ape-inline-button {
-  /* ChatGPT may have specific positioning needs */
-}
-
-/* Claude specific adjustments */
-body[class*="claude"] .ape-inline-button,
-[class*="claude-container"] .ape-inline-button {
-  /* Claude may have specific positioning needs */
-}
+/* Platform-specific adjustments can be added here if needed */
 
 /* ===========================
    Responsive Design
@@ -445,6 +435,148 @@ body[class*="claude"] .ape-inline-button,
 }
 
 /* ===========================
+   Context Menu
+   =========================== */
+
+.ape-context-menu {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  min-width: 220px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  animation: ape-context-menu-appear 0.15s ease-out;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+@keyframes ape-context-menu-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ape-context-menu-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 4px;
+}
+
+.ape-context-menu-section {
+  margin-bottom: 4px;
+}
+
+.ape-context-menu-label {
+  padding: 6px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ape-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  position: relative;
+}
+
+.ape-context-menu-item:hover {
+  background: #f3f4f6;
+  color: #667eea;
+}
+
+.ape-context-menu-item.active {
+  background: #eff6ff;
+  color: #667eea;
+}
+
+.ape-context-menu-emoji {
+  font-size: 16px;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ape-context-menu-text {
+  flex: 1;
+  font-weight: 500;
+}
+
+.ape-context-menu-check {
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ape-context-menu-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 4px 0;
+}
+
+/* Dark mode support for context menu */
+@media (prefers-color-scheme: dark) {
+  .ape-context-menu {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .ape-context-menu-header {
+    color: #9ca3af;
+    border-bottom-color: #374151;
+  }
+
+  .ape-context-menu-label {
+    color: #6b7280;
+  }
+
+  .ape-context-menu-item {
+    color: #e5e7eb;
+  }
+
+  .ape-context-menu-item:hover {
+    background: #374151;
+    color: #a78bfa;
+  }
+
+  .ape-context-menu-item.active {
+    background: #1e1b4b;
+    color: #a78bfa;
+  }
+
+  .ape-context-menu-check {
+    color: #a78bfa;
+  }
+
+  .ape-context-menu-divider {
+    background: #374151;
+  }
+}
+
+/* ===========================
    Z-index Management
    =========================== */
 
@@ -454,4 +586,5 @@ body[class*="claude"] .ape-inline-button,
   - ape-toast: 1000001 (above everything else)
   - ape-quick-editor-modal: 1000002 (above toast)
   - ape-shortcut-feedback: 1000003 (above quick editor)
+  - ape-context-menu: 10000 (context menu)
 */

@@ -13,6 +13,7 @@
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",
+    "https://gemini.google.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],
 
@@ -25,7 +26,8 @@
       "matches": [
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
-        "https://claude.ai/*"
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
       ],
       "js": ["dist/content.js"],
       "css": ["assets/styles/inline-ui.css"],
