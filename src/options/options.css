@@ -277,6 +277,67 @@ kbd {
   margin: 4px 0;
 }
 
+/* Prompt Template Chooser */
+.prompt-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.prompt-template-card {
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  position: relative;
+  cursor: pointer;
+  background: white;
+  transition: all 0.2s ease;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.prompt-template-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.prompt-template-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+}
+
+.prompt-template-card input[type="radio"]:checked + .prompt-template-content {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.prompt-template-card input[type="radio"]:checked ~ .prompt-template-content h3 {
+  color: var(--primary-color);
+}
+
+.prompt-template-content {
+  border: 2px dashed transparent;
+  border-radius: 8px;
+  padding: 4px;
+  transition: border-color 0.2s ease;
+}
+
+.prompt-template-content h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.prompt-template-content p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Subscription Card */
 .subscription-card {
   background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);

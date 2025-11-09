@@ -28,7 +28,10 @@ class PopupController {
       const settingsResponse = await browserCompat.sendMessage({
         action: 'getSettings'
       });
-      this.settings = settingsResponse || DEFAULT_SETTINGS;
+      this.settings = {
+        ...DEFAULT_SETTINGS,
+        ...(settingsResponse || {})
+      };
 
       // Load subscription info
       const subResponse = await browserCompat.sendMessage({
@@ -73,6 +76,21 @@ class PopupController {
     // Save settings
     document.getElementById('save-settings')?.addEventListener('click', () => {
       this.saveSettings();
+    });
+
+    // Prompt template selection
+    document.querySelectorAll('input[name="prompt-template"]').forEach((radio) => {
+      radio.addEventListener('change', async (event) => {
+        this.handleTemplateSelection(event.target.value);
+        await this.saveSettings({ silent: true });
+      });
+    });
+
+    // Custom template sync
+    const customTemplateInput = document.getElementById('custom-template-input');
+    customTemplateInput?.addEventListener('input', (event) => {
+      this.settings.customPromptTemplate = event.target.value;
+      this.queueTemplateSave();
     });
 
     // Load current settings into form
@@ -225,6 +243,18 @@ class PopupController {
   loadSettingsIntoForm() {
     if (!this.settings) return;
 
+    const templateType = this.settings.promptTemplateType || 'standard';
+    const selectedTemplate = document.querySelector(`input[name="prompt-template"][value="${templateType}"]`);
+    if (selectedTemplate) {
+      selectedTemplate.checked = true;
+    }
+    this.toggleCustomTemplate(templateType === 'custom');
+
+    const customTemplateInput = document.getElementById('custom-template-input');
+    if (customTemplateInput) {
+      customTemplateInput.value = this.settings.customPromptTemplate || '';
+    }
+
     const enhancementLevel = document.getElementById('enhancement-level');
     const contextWindow = document.getElementById('context-window');
     const autoEnhance = document.getElementById('auto-enhance');
@@ -239,22 +269,31 @@ class PopupController {
   /**
    * Save settings
    */
-  async saveSettings() {
+  async saveSettings(options = {}) {
+    const { silent = false } = options;
     const enhancementLevel = document.getElementById('enhancement-level')?.value;
-    const contextWindow = parseInt(document.getElementById('context-window')?.value);
+    const contextWindowValue = parseInt(document.getElementById('context-window')?.value, 10);
     const autoEnhance = document.getElementById('auto-enhance')?.checked;
     const showDiff = document.getElementById('show-diff')?.checked;
+    const templateType = document.querySelector('input[name="prompt-template"]:checked')?.value || 'standard';
+    const customTemplate = document.getElementById('custom-template-input')?.value?.trim() || '';
+
+    const resolvedContextWindow = Number.isFinite(contextWindowValue)
+      ? contextWindowValue
+      : (this.settings?.contextWindow ?? DEFAULT_SETTINGS.contextWindow);
 
     const newSettings = {
       ...this.settings,
       enhancementLevel,
-      contextWindow,
+      contextWindow: resolvedContextWindow,
       autoEnhance,
-      showDiff
+      showDiff,
+      promptTemplateType: templateType,
+      customPromptTemplate: customTemplate
     };
 
     const saveBtn = document.getElementById('save-settings');
-    if (saveBtn) {
+    if (!silent && saveBtn) {
       saveBtn.textContent = 'Saving...';
       saveBtn.disabled = true;
     }
@@ -266,16 +305,59 @@ class PopupController {
       });
 
       this.settings = newSettings;
-      this.showGeneralSuccess('Settings saved successfully!');
+      if (!silent) {
+        this.showGeneralSuccess('Settings saved successfully!');
+      }
     } catch (error) {
       console.error('[APE Popup] Save settings error:', error);
-      this.showGeneralError('Failed to save settings');
+      if (!silent) {
+        this.showGeneralError('Failed to save settings');
+      }
     } finally {
-      if (saveBtn) {
+      if (!silent && saveBtn) {
         saveBtn.textContent = 'Save Settings';
         saveBtn.disabled = false;
       }
     }
+  }
+
+  /**
+   * Handle prompt template selection changes
+   */
+  handleTemplateSelection(templateType) {
+    this.settings.promptTemplateType = templateType;
+    this.toggleCustomTemplate(templateType === 'custom');
+
+    if (templateType === 'custom') {
+      const textarea = document.getElementById('custom-template-input');
+      if (textarea) {
+        textarea.focus();
+      }
+    }
+  }
+
+  /**
+   * Show or hide the custom template textarea
+   */
+  toggleCustomTemplate(show) {
+    const wrapper = document.getElementById('custom-template-wrapper');
+    if (!wrapper) return;
+
+    if (show) {
+      wrapper.classList.remove('hidden');
+    } else {
+      wrapper.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Debounced save for custom template edits
+   */
+  queueTemplateSave() {
+    clearTimeout(this.templateSaveTimeout);
+    this.templateSaveTimeout = setTimeout(() => {
+      this.saveSettings({ silent: true });
+    }, 400);
   }
 
   /**

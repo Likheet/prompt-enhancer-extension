@@ -140,49 +140,49 @@
         <div id="api-key-status" class="status-message" style="display: none;"></div>
       </section>
 
-      <!-- General Settings Section -->
+      <!-- Prompt Template Section -->
       <section class="settings-section">
-        <h2 class="section-title">General Settings</h2>
+        <h2 class="section-title">AI Prompt Template</h2>
+        <p class="section-description">
+          Choose the instructions that Gemini uses when enhancing your text, or write a custom template.
+        </p>
 
-        <div class="settings-grid">
-          <div class="form-group">
-            <label for="enhancement-level">Enhancement Level</label>
-            <select id="enhancement-level" class="select-input">
-              <option value="light">Light - Minimal changes</option>
-              <option value="moderate">Moderate - Balanced</option>
-              <option value="aggressive">Aggressive - Maximum detail</option>
-            </select>
-            <small class="help-text">
-              Controls how much the enhancement modifies your original prompt
-            </small>
-          </div>
+        <div class="prompt-template-grid">
+          <label class="prompt-template-card" for="prompt-template-standard">
+            <input type="radio" name="prompt-template" id="prompt-template-standard" value="standard">
+            <div class="prompt-template-content">
+              <h3>Direct Enhancer</h3>
+              <p>Quickly polishes your prompt without additional structure. Best for general use.</p>
+            </div>
+          </label>
 
-          <div class="form-group">
-            <label for="context-window">Context Window (messages)</label>
-            <input
-              type="number"
-              id="context-window"
-              class="number-input"
-              min="1"
-              max="20"
-              value="10"
-            >
-            <small class="help-text">
-              Number of previous conversation messages to consider
-            </small>
-          </div>
+          <label class="prompt-template-card" for="prompt-template-structured">
+            <input type="radio" name="prompt-template" id="prompt-template-structured" value="structured">
+            <div class="prompt-template-content">
+              <h3>Structured Blueprint</h3>
+              <p>Transforms short requests into detailed briefs with role, objectives, constraints, and deliverables.</p>
+            </div>
+          </label>
+
+          <label class="prompt-template-card" for="prompt-template-custom">
+            <input type="radio" name="prompt-template" id="prompt-template-custom" value="custom">
+            <div class="prompt-template-content">
+              <h3>Write Your Own</h3>
+              <p>Provide a custom instruction block for Gemini. Use <code>{{PROMPT}}</code> where the user input should appear.</p>
+            </div>
+          </label>
         </div>
 
-        <div class="checkbox-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="auto-enhance" class="checkbox-input">
-            <span>Auto-enhance when focusing on input field</span>
-          </label>
-
-          <label class="checkbox-label">
-            <input type="checkbox" id="show-diff" class="checkbox-input" checked>
-            <span>Show changes diff view (visual comparison)</span>
-          </label>
+        <div class="form-group" id="custom-template-wrapper" style="display: none;">
+          <label for="custom-template-textarea">Custom Prompt Template</label>
+          <textarea
+            id="custom-template-textarea"
+            rows="10"
+            placeholder="Describe how Gemini should enhance text. Use {{PROMPT}} to insert the user's input."
+          ></textarea>
+          <small class="help-text">
+            Example: "You are a marketing strategist...\n\nNow rewrite the following request:\n{{PROMPT}}"
+          </small>
         </div>
       </section>
 

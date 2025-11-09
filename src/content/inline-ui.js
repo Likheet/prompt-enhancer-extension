@@ -3,7 +3,7 @@
  * Provides inline button beside chatbox for prompt enhancement
  */
 
-import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES } from '../shared/constants.js';
+import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '../shared/constants.js';
 import { copyToClipboard, generateId } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import EnhancementPresets from './enhancement-presets.js';
@@ -20,6 +20,7 @@ class InlineUI {
     this.isProcessing = false;
     this.buttonId = `ape-inline-btn-${generateId()}`;
     this.presets = new EnhancementPresets();
+    this.extensionInvalidatedNotified = false;
 
     this.init();
   }
@@ -289,6 +290,16 @@ class InlineUI {
         this.showToast('Enhancement failed', 'error');
         return;
       }
+        const trimmedOriginal = context.currentPrompt.trim();
+        const trimmedEnhanced = enhanced.trim();
+        if (!trimmedEnhanced.length) {
+          this.showToast('No enhanced content returned', 'warning');
+          return;
+        }
+        if (trimmedEnhanced === trimmedOriginal) {
+          this.showToast('No changes were applied to the prompt', 'info');
+          return;
+        }
 
       this.enhancedPrompt = enhanced;
 
@@ -350,9 +361,34 @@ class InlineUI {
       const response = await browserCompat.sendMessage({
         action: 'getSettings'
       });
-      return response || this.settings || {};
+      if (response) {
+        this.settings = response;
+      }
+      return this.settings || {};
     } catch (error) {
-      console.error('[APE InlineUI] Failed to get settings:', error);
+      const message = error?.message || String(error);
+
+      if (message.includes('Extension context invalidated')) {
+        if (!this.extensionInvalidatedNotified) {
+          this.showToast('Extension reloaded. Refresh the page to continue.', 'warning');
+          this.extensionInvalidatedNotified = true;
+        }
+      } else {
+        console.error('[APE InlineUI] Failed to get settings:', error);
+      }
+
+      try {
+        const fallback = await browserCompat.storageGet([STORAGE_KEYS.SETTINGS]);
+        if (fallback?.[STORAGE_KEYS.SETTINGS]) {
+          this.settings = {
+            ...this.settings,
+            ...fallback[STORAGE_KEYS.SETTINGS]
+          };
+        }
+      } catch (storageError) {
+        console.error('[APE InlineUI] Storage fallback failed:', storageError);
+      }
+
       return this.settings || {};
     }
   }

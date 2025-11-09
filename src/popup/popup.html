@@ -60,6 +60,47 @@
         </div>
       </section>
 
+      <!-- Prompt Template Section -->
+      <section class="section">
+        <h2 class="section-title">Prompt Template</h2>
+        <p class="section-subtitle">Choose how we frame your request before sending it to Gemini.</p>
+
+        <div class="template-grid">
+          <label class="template-card" for="template-standard">
+            <input type="radio" name="prompt-template" id="template-standard" value="standard">
+            <div class="template-content">
+              <div class="template-title">⚡ Direct Enhancer</div>
+              <p class="template-desc">Keep Gemini focused on rewriting your prompt directly with no commentary or formatting extras.</p>
+            </div>
+          </label>
+
+          <label class="template-card" for="template-structured">
+            <input type="radio" name="prompt-template" id="template-structured" value="structured">
+            <div class="template-content">
+              <div class="template-title">🧭 Structured Blueprint</div>
+              <p class="template-desc">Transform short or vague requests into a role/objective/deliverables format for richer answers.</p>
+            </div>
+          </label>
+
+          <label class="template-card" for="template-custom">
+            <input type="radio" name="prompt-template" id="template-custom" value="custom">
+            <div class="template-content">
+              <div class="template-title">🛠️ Custom Instructions</div>
+              <p class="template-desc">Use your own template. Remember to include <code>{{PROMPT}}</code> where the original text should be inserted.</p>
+            </div>
+          </label>
+        </div>
+
+        <div id="custom-template-wrapper" class="custom-template hidden">
+          <label for="custom-template-input">Custom Template</label>
+          <textarea
+            id="custom-template-input"
+            rows="6"
+            placeholder="Describe exactly how Gemini should rewrite prompts. Use {{PROMPT}} as the placeholder for the original text."></textarea>
+          <p class="help-text">We replace every <code>{{PROMPT}}</code> token with the text you're enhancing.</p>
+        </div>
+      </section>
+
       <!-- Settings Section -->
       <section class="section">
         <h2 class="section-title">Settings</h2>

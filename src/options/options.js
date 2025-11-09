@@ -41,7 +41,8 @@ class OptionsPage {
   async loadSettings() {
     try {
       const result = await browserCompat.storage_get([STORAGE_KEYS.SETTINGS]);
-      this.settings = result[STORAGE_KEYS.SETTINGS] || { ...DEFAULT_SETTINGS };
+      const storedSettings = result[STORAGE_KEYS.SETTINGS] || {};
+      this.settings = { ...DEFAULT_SETTINGS, ...storedSettings };
       console.log('[Options] Settings loaded:', this.settings);
     } catch (error) {
       console.error('[Options] Failed to load settings:', error);
@@ -128,6 +129,23 @@ class OptionsPage {
    * Populate settings fields
    */
   populateSettings() {
+    // Prompt template selection
+    const templateType = this.settings.promptTemplateType || 'standard';
+    const templateRadios = document.querySelectorAll('input[name="prompt-template"]');
+    templateRadios.forEach(radio => {
+      radio.checked = radio.value === templateType;
+    });
+
+    const customTemplateWrapper = document.getElementById('custom-template-wrapper');
+    if (customTemplateWrapper) {
+      customTemplateWrapper.style.display = templateType === 'custom' ? 'block' : 'none';
+    }
+
+    const customTemplateTextarea = document.getElementById('custom-template-textarea');
+    if (customTemplateTextarea) {
+      customTemplateTextarea.value = this.settings.customPromptTemplate || '';
+    }
+
     // Enhancement level
     const enhancementLevel = document.getElementById('enhancement-level');
     if (enhancementLevel) {
@@ -195,6 +213,21 @@ class OptionsPage {
    * Attach event listeners
    */
   attachEventListeners() {
+    // Prompt template selection
+    document.querySelectorAll('input[name="prompt-template"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        this.handlePromptTemplateChange(e.target.value);
+      });
+    });
+
+    const customTemplateTextarea = document.getElementById('custom-template-textarea');
+    if (customTemplateTextarea) {
+      customTemplateTextarea.addEventListener('input', () => {
+        this.settings.customPromptTemplate = customTemplateTextarea.value;
+        this.autoSaveSettings();
+      });
+    }
+
     // Enhancement type selection
     document.querySelectorAll('input[name="enhancement-type"]').forEach(radio => {
       radio.addEventListener('change', (e) => {
@@ -329,6 +362,39 @@ class OptionsPage {
     const section = document.getElementById('custom-enhancement-section');
     if (section) {
       section.style.display = 'none';
+    }
+  }
+
+  /**
+   * Handle prompt template selection change
+   */
+  handlePromptTemplateChange(templateType) {
+    this.settings.promptTemplateType = templateType;
+
+    if (templateType === 'custom') {
+      this.showCustomTemplate();
+    } else {
+      this.hideCustomTemplate();
+    }
+
+    this.autoSaveSettings();
+  }
+
+  showCustomTemplate() {
+    const wrapper = document.getElementById('custom-template-wrapper');
+    if (wrapper) {
+      wrapper.style.display = 'block';
+      const textarea = document.getElementById('custom-template-textarea');
+      if (textarea) {
+        textarea.focus();
+      }
+    }
+  }
+
+  hideCustomTemplate() {
+    const wrapper = document.getElementById('custom-template-wrapper');
+    if (wrapper) {
+      wrapper.style.display = 'none';
     }
   }
 

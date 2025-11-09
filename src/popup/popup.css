@@ -76,11 +76,117 @@ body::-webkit-scrollbar-thumb {
   margin-bottom: 12px;
 }
 
+.section-subtitle {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+/* Template Chooser */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.template-card {
+  position: relative;
+  display: block;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.template-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.12);
+  transform: translateY(-2px);
+}
+
+.template-card input[type="radio"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.template-card input[type="radio"]:checked + .template-content {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.06);
+}
+
+.template-card input[type="radio"]:checked + .template-content .template-title {
+  color: #4c51bf;
+}
+
+.template-content {
+  border: 2px dashed transparent;
+  border-radius: 8px;
+  padding: 4px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.template-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.template-desc {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.template-desc code {
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background: #eef2ff;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.custom-template {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-template label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.custom-template textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 120px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.custom-template textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 /* Subscription Card */

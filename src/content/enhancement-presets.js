@@ -4,13 +4,13 @@
  */
 
 import browserCompat from '../shared/browser-compat.js';
-import { GEMINI_API, ERROR_MESSAGES } from '../shared/constants.js';
+import { GEMINI_API, ERROR_MESSAGES, PROMPT_TEMPLATES, ENHANCEMENT_PRESETS } from '../shared/constants.js';
 import { TEST_MODE_ENABLED, HARDCODED_API_KEY } from '../shared/test-config.js';
 
 class EnhancementPresets {
   constructor() {
     this.presets = {
-      concise: {
+      [ENHANCEMENT_PRESETS.CONCISE]: {
         name: 'Concise & Clear',
         description: 'Makes prompts more direct and specific',
         emoji: '🎯',
@@ -28,8 +28,7 @@ RULES:
 Return ONLY the enhanced prompt without any explanation.`,
         ruleBasedStrategy: 'clarification'
       },
-
-      detailed: {
+      [ENHANCEMENT_PRESETS.DETAILED]: {
         name: 'Detailed & Comprehensive',
         description: 'Adds context and requirements for thorough responses',
         emoji: '📋',
@@ -48,8 +47,7 @@ RULES:
 Return ONLY the enhanced prompt without any explanation.`,
         ruleBasedStrategy: 'structured'
       },
-
-      balanced: {
+      [ENHANCEMENT_PRESETS.BALANCED]: {
         name: 'Balanced Enhancement',
         description: 'Optimizes for clarity and completeness',
         emoji: '⚖️',
@@ -67,8 +65,7 @@ RULES:
 Return ONLY the enhanced prompt without any explanation.`,
         ruleBasedStrategy: 'general'
       },
-
-      technical: {
+      [ENHANCEMENT_PRESETS.TECHNICAL]: {
         name: 'Technical Optimization',
         description: 'Optimizes for technical/coding tasks',
         emoji: '💻',
@@ -88,8 +85,7 @@ RULES:
 Return ONLY the enhanced prompt without any explanation.`,
         ruleBasedStrategy: 'technical'
       },
-
-      creative: {
+      [ENHANCEMENT_PRESETS.CREATIVE]: {
         name: 'Creative Enhancement',
         description: 'Optimizes for creative writing tasks',
         emoji: '✨',
@@ -108,20 +104,18 @@ RULES:
 Return ONLY the enhanced prompt without any explanation.`,
         ruleBasedStrategy: 'creative'
       },
-
-      custom: {
+      [ENHANCEMENT_PRESETS.CUSTOM]: {
         name: 'Custom Enhancement',
         description: 'Use your own enhancement instructions',
         emoji: '🔧',
-        systemPrompt: null, // Will be replaced by user's custom prompt
+        systemPrompt: null,
         ruleBasedStrategy: 'general'
       }
     };
+
+    this.contextInvalidNotified = false;
   }
 
-  /**
-   * Get all available presets
-   */
   getAllPresets() {
     return Object.entries(this.presets).map(([key, preset]) => ({
       key,
@@ -129,20 +123,12 @@ Return ONLY the enhanced prompt without any explanation.`,
     }));
   }
 
-  /**
-   * Get a specific preset
-   */
   getPreset(key) {
-    return this.presets[key] || this.presets.balanced;
+    return this.presets[key] || this.presets[ENHANCEMENT_PRESETS.BALANCED];
   }
 
-  /**
-   * Enhance prompt using a preset
-   */
   async enhanceWithPreset(context, presetKey, customPrompt = null) {
     const preset = this.getPreset(presetKey);
-
-    // Check if an API key is available (settings or test mode)
     const settings = await this.getSettings();
     const subscription = await this.getSubscription();
 
@@ -151,23 +137,22 @@ Return ONLY the enhanced prompt without any explanation.`,
       || (TEST_MODE_ENABLED ? HARDCODED_API_KEY : null);
 
     if (apiKey) {
-      return await this.enhanceWithAI(context, preset, presetKey, customPrompt, apiKey);
+      return await this.enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings);
     }
 
     return await this.enhanceWithRules(context, preset);
   }
 
-  /**
-   * Enhance with AI (Gemini)
-   */
-  async enhanceWithAI(context, preset, presetKey, customPrompt, apiKey) {
-    const systemPrompt = presetKey === 'custom' && customPrompt
+  async enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings) {
+    const templateType = settings.promptTemplateType || 'standard';
+    const systemPrompt = presetKey === ENHANCEMENT_PRESETS.CUSTOM && customPrompt
       ? customPrompt
       : preset.systemPrompt;
 
     const enhancementRequest = this.buildEnhancementRequest(
       systemPrompt,
-      context
+      context,
+      settings
     );
 
     try {
@@ -198,62 +183,120 @@ Return ONLY the enhanced prompt without any explanation.`,
       }
 
       const data = await response.json();
-      const enhanced = data.candidates[0].content.parts[0].text.trim();
+      const enhanced = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
 
-      // Clean up any wrapper text
-      return this.cleanEnhancedPrompt(enhanced);
+      return this.cleanEnhancedPrompt(enhanced, { templateType, presetKey });
     } catch (error) {
       console.error('[EnhancementPresets] Gemini API error:', error);
-      // Fallback to rule-based
       return await this.enhanceWithRules(context, preset);
     }
   }
 
-  /**
-   * Build enhancement request for AI
-   */
-  buildEnhancementRequest(systemPrompt, context) {
+  buildEnhancementRequest(systemPrompt, context, settings = {}) {
     const promptText = context.currentPrompt || '';
-    return `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):\n\n${promptText}`;
+    const templateType = settings.promptTemplateType || 'standard';
+
+    let template;
+    if (templateType === 'custom' && settings.customPromptTemplate?.trim()) {
+      template = settings.customPromptTemplate.trim();
+    } else {
+      template = PROMPT_TEMPLATES[templateType] || PROMPT_TEMPLATES.standard;
+    }
+
+    if (!template.includes('{{PROMPT}}')) {
+      template = `${template}\n\n{{PROMPT}}`;
+    }
+
+    let request = template.replace(/{{PROMPT}}/g, promptText);
+
+    if (systemPrompt) {
+      request = `${systemPrompt.trim()}\n\n${request}`;
+    }
+
+    if (context.conversationHistory && context.conversationHistory.length > 0) {
+      const recentMessages = context.conversationHistory.slice(-3);
+      const contextSummary = recentMessages
+        .map((msg, idx) => `${idx + 1}. [${msg.role}]: ${msg.content.substring(0, 200)}`)
+        .join('\n');
+
+      request += `\n\nConversation Snapshot:\n${contextSummary}`;
+    }
+
+    return request;
   }
 
-  /**
-   * Clean enhanced prompt (remove any explanatory text)
-   */
-  cleanEnhancedPrompt(enhanced) {
-    // Remove common wrapper patterns
+  cleanEnhancedPrompt(enhanced, options = {}) {
     let cleaned = enhanced;
 
-    // Remove "Here is..." or "Here's..." introductions
     cleaned = cleaned.replace(/^(Here is|Here's|Here are)[\s\S]*?:\s*/i, '');
 
-    // Remove quotes if the entire response is quoted
     if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
       cleaned = cleaned.slice(1, -1);
     }
-    if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+    if (cleaned.startsWith('\'') && cleaned.endsWith('\'')) {
       cleaned = cleaned.slice(1, -1);
     }
 
-    // Remove markdown code blocks if entire response is wrapped
     if (cleaned.startsWith('```') && cleaned.endsWith('```')) {
       cleaned = cleaned.replace(/^```[a-z]*\n/, '').replace(/\n```$/, '');
     }
 
-    return cleaned.trim();
+    cleaned = cleaned.trim();
+
+    if (options.templateType === 'structured') {
+      cleaned = this.formatStructuredOutput(cleaned);
+    }
+
+    return cleaned;
   }
 
-  /**
-   * Enhance with rule-based strategies (fallback)
-   */
+  formatStructuredOutput(text) {
+    if (!text) {
+      return text;
+    }
+
+    let formatted = text.replace(/\r\n/g, '\n');
+    const sectionLabels = ['Role:', 'Objective:', 'Constraints:', 'Deliverables:', 'Output Format:'];
+    const escapedLabels = sectionLabels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const combinedPattern = new RegExp(`\\s*(${escapedLabels.join('|')})`, 'gi');
+
+    // Add newline before each section label
+    formatted = formatted.replace(combinedPattern, (_, label) => `\n${label}`);
+    formatted = formatted.replace(/^\n+/, '');
+
+    // Add double newline before each section except Role (for spacing)
+    sectionLabels.slice(1).forEach((label) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const anchorPattern = new RegExp(`\n${escaped}`, 'gi');
+      formatted = formatted.replace(anchorPattern, `\n\n${label}`);
+    });
+
+    // Ensure content after Constraints/Deliverables starts on new line
+    ['Constraints:', 'Deliverables:'].forEach((label) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const ensureLineBreak = new RegExp(`${escaped}\\s*(?!\\n)`, 'gi');
+      formatted = formatted.replace(ensureLineBreak, `${label}\n`);
+    });
+
+    // Fix bullet points - only match at start of words after whitespace, not hyphens in words
+    // Match: "  - item" or "\n- item" but not "non-specific"
+    formatted = formatted.replace(/(\n|\s{2,})-\s+/g, '\n- ');
+    
+    // Remove multiple consecutive newlines
+    formatted = formatted.replace(/\n{3,}/g, '\n\n');
+    
+    // Remove trailing whitespace from lines
+    formatted = formatted.replace(/[ \t]+\n/g, '\n');
+    formatted = formatted.replace(/[ \t]+$/gm, '');
+
+    return formatted.trim();
+  }
+
   async enhanceWithRules(context, preset) {
     const strategy = preset.ruleBasedStrategy || 'general';
-
-    // Import the rule-based enhancer
     const { default: PromptEnhancer } = await import('./prompt-enhancer.js');
     const enhancer = new PromptEnhancer(null);
 
-    // Use the appropriate rule-based strategy
     const strategies = {
       clarification: () => enhancer.clarifyPrompt(context.currentPrompt, context),
       structured: () => enhancer.structurePrompt(context.currentPrompt, context),
@@ -266,22 +309,24 @@ Return ONLY the enhanced prompt without any explanation.`,
     return enhanceFn();
   }
 
-  /**
-   * Get current settings
-   */
   async getSettings() {
     try {
       const result = await browserCompat.storageGet(['enhancerSettings']);
       return result.enhancerSettings || {};
     } catch (error) {
-      console.error('[EnhancementPresets] Failed to get settings:', error);
+      const message = error?.message || String(error);
+      if (message.includes('Extension context invalidated')) {
+        if (!this.contextInvalidNotified) {
+          console.warn('[EnhancementPresets] Extension context invalidated while reading settings. Refresh the page to reinitialize.');
+          this.contextInvalidNotified = true;
+        }
+      } else {
+        console.error('[EnhancementPresets] Failed to get settings:', error);
+      }
       return {};
     }
   }
 
-  /**
-   * Get subscription info
-   */
   async getSubscription() {
     try {
       const response = await browserCompat.sendMessage({
@@ -289,7 +334,15 @@ Return ONLY the enhanced prompt without any explanation.`,
       });
       return response || { type: 'free' };
     } catch (error) {
-      console.error('[EnhancementPresets] Failed to get subscription:', error);
+      const message = error?.message || String(error);
+      if (message.includes('Extension context invalidated')) {
+        if (!this.contextInvalidNotified) {
+          console.warn('[EnhancementPresets] Extension context invalidated while fetching subscription. Refresh the page to reinitialize.');
+          this.contextInvalidNotified = true;
+        }
+      } else {
+        console.error('[EnhancementPresets] Failed to get subscription:', error);
+      }
       return { type: 'free' };
     }
   }

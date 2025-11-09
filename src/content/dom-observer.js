@@ -241,11 +241,24 @@ class ResilientDOMObserver {
         inputElement.focus();
 
         // Clear content
-        inputElement.textContent = '';
+        inputElement.innerHTML = '';
 
-        // Insert new content as plain text (prevents XSS)
-        const textNode = document.createTextNode(enhancedText);
-        inputElement.appendChild(textNode);
+        // Split text by newlines and create proper paragraph/br structure
+        const lines = enhancedText.split('\n');
+        const fragment = document.createDocumentFragment();
+        
+        lines.forEach((line, index) => {
+          // Create text node for the line
+          const textNode = document.createTextNode(line);
+          fragment.appendChild(textNode);
+          
+          // Add line break after each line except the last
+          if (index < lines.length - 1) {
+            fragment.appendChild(document.createElement('br'));
+          }
+        });
+        
+        inputElement.appendChild(fragment);
 
         // Trigger input event
         inputElement.dispatchEvent(new InputEvent('input', {

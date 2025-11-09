@@ -44,11 +44,64 @@ export const DEFAULT_SETTINGS = {
   autoEnhance: false,
   showDiff: true,
   geminiApiKey: null,
+  promptTemplateType: 'standard',
+  customPromptTemplate: '',
   shortcuts: {
     'Alt+1': ENHANCEMENT_PRESETS.CONCISE,
     'Alt+2': ENHANCEMENT_PRESETS.BALANCED,
     'Alt+3': ENHANCEMENT_PRESETS.DETAILED
   }
+};
+
+export const PROMPT_TEMPLATES = {
+  standard: `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):\n\n{{PROMPT}}`,
+  structured: `You are a Prompt Enhancement Specialist. Transform the user's input into a structured prompt using this EXACT format.
+
+CRITICAL FORMATTING RULES:
+1. Each section MUST start on a new line
+2. Put a blank line between sections
+3. Use ONLY plain text - no markdown, no code blocks, no quotes
+4. Format: "SectionName: content" 
+5. For bullet lists, put each item on its own line starting with "- "
+
+SECTIONS TO INCLUDE:
+
+Role: [Define AI assistant role for the task domain]
+
+Objective: [State the main goal in 1-2 sentences]
+
+Constraints:
+- [List any limitations or requirements]
+- [Each constraint on its own line]
+
+Deliverables:
+- [Specific output item 1]
+- [Specific output item 2]
+- [Specific output item 3]
+- [Add more as needed]
+
+Output Format: [Specify format like Text, Markdown, JSON, etc.]
+
+EXAMPLE:
+Input: "help me with a greeting"
+
+Your output should be:
+Role: Conversational AI
+
+Objective: Acknowledge the user's greeting and initiate a helpful interaction.
+
+Constraints:
+- Response should be friendly and welcoming
+- Response should be concise and avoid unnecessary details
+
+Deliverables:
+- Acknowledge the greeting
+- Offer assistance or ask how to help
+
+Output Format: Text
+
+Now enhance this prompt (output ONLY the structured format above, nothing else):
+{{PROMPT}}`
 };
 
 export const GEMINI_API = {

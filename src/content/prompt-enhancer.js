@@ -3,7 +3,7 @@
  * Rule-based and AI-powered prompt enhancement
  */
 
-import { ENHANCEMENT_LEVELS, GEMINI_API, ERROR_MESSAGES } from '../shared/constants.js';
+import { ENHANCEMENT_LEVELS, GEMINI_API, ERROR_MESSAGES, PROMPT_TEMPLATES } from '../shared/constants.js';
 import { truncate, retryWithBackoff } from '../shared/utils.js';
 import { TEST_MODE_ENABLED, HARDCODED_API_KEY } from '../shared/test-config.js';
 
@@ -158,9 +158,22 @@ class PromptEnhancer {
   /**
    * Build prompt for Gemini API
    */
-  buildGeminiPrompt(context, settings) {
+  buildGeminiPrompt(context, settings = {}) {
     const { currentPrompt } = context;
-    return `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):\n\n${currentPrompt}`;
+    const templateType = settings.promptTemplateType || 'standard';
+
+    let template;
+    if (templateType === 'custom' && settings.customPromptTemplate?.trim()) {
+      template = settings.customPromptTemplate.trim();
+    } else {
+      template = PROMPT_TEMPLATES[templateType] || PROMPT_TEMPLATES.standard;
+    }
+
+    if (!template.includes('{{PROMPT}}')) {
+      template = `${template}\n\n{{PROMPT}}`;
+    }
+
+    return template.replace(/{{PROMPT}}/g, currentPrompt);
   }
 
   /**
