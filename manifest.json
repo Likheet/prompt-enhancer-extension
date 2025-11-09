@@ -29,7 +29,7 @@
         "https://claude.ai/*"
       ],
       "js": ["src/content/main.js"],
-      "css": ["assets/styles/floating-ui.css"],
+      "css": ["assets/styles/inline-ui.css"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -43,6 +43,8 @@
       "128": "assets/icons/icon-128.png"
     }
   },
+
+  "options_page": "src/options/options.html",
 
   "icons": {
     "16": "assets/icons/icon-16.png",

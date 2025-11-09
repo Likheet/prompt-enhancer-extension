@@ -6,7 +6,8 @@
 import ResilientDOMObserver from './dom-observer.js';
 import ContextExtractor from './context-extractor.js';
 import PromptEnhancer from './prompt-enhancer.js';
-import FloatingUI from './floating-ui.js';
+import InlineUI from './inline-ui.js';
+import KeyboardShortcuts from './keyboard-shortcuts.js';
 import browserCompat from '../shared/browser-compat.js';
 import subscriptionManager from '../background/subscription-manager.js';
 
@@ -15,7 +16,8 @@ class AIPromptEnhancerExtension {
     this.domObserver = null;
     this.contextExtractor = null;
     this.promptEnhancer = null;
-    this.floatingUI = null;
+    this.inlineUI = null;
+    this.keyboardShortcuts = null;
     this.settings = null;
     this.initialized = false;
   }
@@ -59,10 +61,16 @@ class AIPromptEnhancerExtension {
       this.promptEnhancer = new PromptEnhancer(mockSubManager);
 
       // Initialize UI
-      this.floatingUI = new FloatingUI(
+      this.inlineUI = new InlineUI(
         this.promptEnhancer,
         this.contextExtractor,
         this.domObserver,
+        this.settings
+      );
+
+      // Initialize keyboard shortcuts
+      this.keyboardShortcuts = new KeyboardShortcuts(
+        this.inlineUI,
         this.settings
       );
 
