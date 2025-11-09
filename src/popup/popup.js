@@ -78,11 +78,6 @@ class PopupController {
       this.saveSettings();
     });
 
-    // Reset button position
-    document.getElementById('reset-button-position')?.addEventListener('click', () => {
-      this.resetButtonPosition();
-    });
-
     // Prompt template selection
     document.querySelectorAll('input[name="prompt-template"]').forEach((radio) => {
       radio.addEventListener('change', async (event) => {
@@ -322,40 +317,6 @@ class PopupController {
       if (!silent && saveBtn) {
         saveBtn.textContent = 'Save Settings';
         saveBtn.disabled = false;
-      }
-    }
-  }
-
-  /**
-   * Reset button position to default
-   */
-  async resetButtonPosition() {
-    const btn = document.getElementById('reset-button-position');
-    if (btn) {
-      btn.textContent = 'Resetting...';
-      btn.disabled = true;
-    }
-
-    try {
-      const newSettings = {
-        ...this.settings,
-        buttonPosition: null
-      };
-
-      await browserCompat.sendMessage({
-        action: 'saveSettings',
-        data: { settings: newSettings }
-      });
-
-      this.settings = newSettings;
-      this.showGeneralSuccess('Button position reset! Reload the page to see changes.');
-    } catch (error) {
-      console.error('[APE Popup] Reset button position error:', error);
-      this.showGeneralError('Failed to reset button position');
-    } finally {
-      if (btn) {
-        btn.textContent = 'Reset Button Position';
-        btn.disabled = false;
       }
     }
   }

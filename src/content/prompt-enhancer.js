@@ -196,8 +196,33 @@ class PromptEnhancer {
    * Clarify vague prompts
    */
   clarifyPrompt(prompt, context, settings) {
-    // Simply return the prompt as-is for rule-based mode
-    return prompt;
+    let enhanced = prompt;
+
+    // Add specificity
+    if (enhanced.length < 50) {
+      enhanced += '. Please provide a detailed response with specific examples.';
+    }
+
+    // Remove vague words and replace with specific requests
+    const vaguePatterns = [
+      { pattern: /\b(help|fix|do|make|improve|check)\b/gi, replacement: (match) => {
+        const replacements = {
+          'help': 'assist me with',
+          'fix': 'debug and fix',
+          'do': 'help me',
+          'make': 'create',
+          'improve': 'enhance and optimize',
+          'check': 'review and validate'
+        };
+        return replacements[match.toLowerCase()] || match;
+      }}
+    ];
+
+    vaguePatterns.forEach(({ pattern, replacement }) => {
+      enhanced = enhanced.replace(pattern, replacement);
+    });
+
+    return enhanced;
   }
 
   /**
@@ -251,25 +276,81 @@ class PromptEnhancer {
    * Enhance technical prompts
    */
   enhanceTechnical(prompt, context, settings) {
-    // Simply return the prompt as-is for rule-based mode
-    return prompt;
+    let enhanced = prompt;
+
+    // Add language specification if coding-related
+    if (/code|function|script|program|algorithm/i.test(prompt)) {
+      if (!/language|python|javascript|java|c\+\+|typescript/i.test(prompt)) {
+        enhanced += ' Please specify the programming language.';
+      }
+    }
+
+    // Add error handling requirements
+    if (/write|create|build|function/i.test(prompt) && !/error|exception|handle/i.test(prompt)) {
+      enhanced += ' Include proper error handling and input validation.';
+    }
+
+    // Add documentation request
+    if (/function|code|class|module/i.test(prompt) && !/comment|document|explain/i.test(prompt)) {
+      enhanced += ' Include clear comments and documentation.';
+    }
+
+    return enhanced;
   }
 
   /**
    * Enhance creative prompts
    */
   enhanceCreative(prompt, context, settings) {
-    // Simply return the prompt as-is for rule-based mode
-    return prompt;
+    let enhanced = prompt;
+
+    // Add tone/style specification if missing
+    if (!/tone|style|genre|write|story|poem|essay/i.test(prompt)) {
+      return enhanced;
+    }
+
+    if (!/tone|style|mood|genre/i.test(prompt)) {
+      enhanced += ' Please specify the desired tone and style.';
+    }
+
+    // Add audience specification if missing
+    if (!/audience|age|level|for|beginner|expert/i.test(prompt)) {
+      enhanced += ' Consider the target audience and adjust complexity accordingly.';
+    }
+
+    // Add length specification if missing
+    if (!/length|words|paragraphs|lines|short|long/i.test(prompt)) {
+      enhanced += ' Specify the desired length or scope.';
+    }
+
+    return enhanced;
   }
 
   /**
    * General enhancement
    */
   enhanceGeneral(prompt, context, settings) {
-    // Simply return the prompt as-is for rule-based mode
-    // The actual enhancement happens in the AI call
-    return prompt;
+    let enhanced = prompt;
+
+    // Add context clarification
+    if (!enhanced.includes('?') && enhanced.length < 100) {
+      enhanced = enhanced + '? Please provide a comprehensive answer.';
+    }
+
+    // Add format specification if not present
+    if (!/format|structure|list|paragraph|bullet|table|steps|process/i.test(enhanced)) {
+      enhanced += ' Please structure your response clearly.';
+    }
+
+    // Add scope clarification if vague
+    if (/what|why|how|tell|explain|describe/i.test(enhanced) && !enhanced.includes('context')) {
+      const context = this.findRelevantContext(prompt, settings.conversationHistory || []);
+      if (context.length > 0) {
+        enhanced += ' Consider the conversation context.';
+      }
+    }
+
+    return enhanced;
   }
 
   /**
