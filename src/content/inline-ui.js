@@ -7,6 +7,7 @@ import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '..
 import { copyToClipboard, generateId } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import EnhancementPresets from './enhancement-presets.js';
+import DynamicIconPositioner from './dynamic-icon-positioner.js';
 
 class InlineUI {
   constructor(enhancer, extractor, domObserver, settings) {
@@ -21,6 +22,7 @@ class InlineUI {
     this.buttonId = `ape-inline-btn-${generateId()}`;
     this.presets = new EnhancementPresets();
     this.extensionInvalidatedNotified = false;
+    this.dynamicPositioner = null; // Dynamic positioning system
 
     this.init();
   }
@@ -94,13 +96,6 @@ class InlineUI {
       return;
     }
 
-    // Find the appropriate container for positioning
-    const container = this.findInputContainer(inputArea);
-    if (!container) {
-      console.warn('[APE InlineUI] Container not found');
-      return;
-    }
-
     // Create button
     this.currentButton = this.createEnhanceButton();
 
@@ -108,8 +103,11 @@ class InlineUI {
     const settings = await this.getSettings();
     const savedPosition = settings.buttonPosition;
 
+    // Append to body initially (will be repositioned by DynamicIconPositioner)
+    document.body.appendChild(this.currentButton);
+
     if (savedPosition && savedPosition.preset) {
-      // Apply saved preset position
+      // Apply saved preset position (user preference overrides dynamic positioning)
       Object.assign(this.currentButton.style, {
         position: 'fixed',
         left: savedPosition.left || 'auto',
@@ -118,10 +116,10 @@ class InlineUI {
         bottom: savedPosition.bottom || 'auto',
         zIndex: '9999'
       });
-      document.body.appendChild(this.currentButton);
+      console.log('[APE InlineUI] Using saved position preference');
     } else {
-      // Use platform-specific default positioning
-      this.positionButton(container, inputArea);
+      // Initialize dynamic positioning system
+      this.initializeDynamicPositioning();
     }
 
     console.log('[APE InlineUI] Button attached successfully');
@@ -658,85 +656,47 @@ class InlineUI {
   }
 
   /**
-   * Position button based on platform
+   * Initialize dynamic positioning system
    */
-  positionButton(container, inputElement) {
-    // Note: container parameter unused after switching to fixed positioning
-    // This is intentional - fixed positioning is simpler and more reliable
-    const platform = this.domObserver.platform;
+  async initializeDynamicPositioning() {
+    if (this.dynamicPositioner) {
+      // Clean up existing positioner
+      this.dynamicPositioner.destroy();
+    }
 
-    // Platform-specific positioning strategies
-    const positions = {
-      chatgpt: () => {
-        // ChatGPT: FIXED positioning to avoid container confusion bugs
-        // Position in bottom-left of viewport, near input area
+    try {
+      // Create and initialize dynamic positioner
+      this.dynamicPositioner = new DynamicIconPositioner(
+        this.currentButton,
+        this.domObserver
+      );
 
-        // Use fixed positioning - simple and reliable
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
+      await this.dynamicPositioner.initialize();
 
-        // Append to body for fixed positioning
-        document.body.appendChild(this.currentButton);
-      },
+      console.log('[APE InlineUI] Dynamic positioning initialized');
+    } catch (error) {
+      console.error('[APE InlineUI] Failed to initialize dynamic positioning:', error);
+      // Fallback to static positioning
+      this.applyFallbackPositioning();
+    }
+  }
 
-      claude: () => {
-        // Claude: FIXED positioning for reliability
-        // Position in bottom-left, similar to ChatGPT for consistency
+  /**
+   * Apply fallback positioning if dynamic positioning fails
+   */
+  applyFallbackPositioning() {
+    if (!this.currentButton) return;
 
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
+    console.log('[APE InlineUI] Applying fallback positioning');
 
-        document.body.appendChild(this.currentButton);
-      },
-
-      gemini: () => {
-        // Gemini: FIXED positioning for reliability
-        // Position in bottom-left for consistency
-
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      },
-
-      generic: () => {
-        // Generic: FIXED positioning for reliability
-        // Default bottom-left position
-
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      }
-    };
-
-    // Execute platform-specific positioning or use generic
-    const positionFn = positions[platform] || positions.generic;
-    positionFn();
+    Object.assign(this.currentButton.style, {
+      position: 'fixed',
+      left: '20px',
+      bottom: '100px',
+      right: 'auto',
+      top: 'auto',
+      zIndex: '9999'
+    });
   }
 
   /**
@@ -1006,9 +966,22 @@ class InlineUI {
    * Cleanup/destroy
    */
   destroy() {
+    // Destroy dynamic positioner
+    if (this.dynamicPositioner) {
+      this.dynamicPositioner.destroy();
+      this.dynamicPositioner = null;
+    }
+
+    // Remove button
     if (this.currentButton) {
       this.currentButton.remove();
       this.currentButton = null;
+    }
+
+    // Disconnect container observer
+    if (this.containerObserver) {
+      this.containerObserver.disconnect();
+      this.containerObserver = null;
     }
   }
 }

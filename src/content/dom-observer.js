@@ -13,6 +13,24 @@ class ResilientDOMObserver {
     this.selectors = this.getPlatformSelectors();
     this.inputElement = null;
     this.sendButton = null;
+    this.inputElementCache = new Map(); // Cache for performance
+    this.lastInputCheck = 0;
+    this.inputCheckThrottle = 500; // ms
+
+    // Set platform data attribute on body for CSS targeting
+    this.setPlatformDataAttribute();
+  }
+
+  /**
+   * Set platform data attribute for CSS targeting
+   */
+  setPlatformDataAttribute() {
+    if (document.body) {
+      document.body.setAttribute('data-platform', this.platform);
+    } else {
+      // Wait for body to be available
+      setTimeout(() => this.setPlatformDataAttribute(), 100);
+    }
   }
 
   /**
@@ -195,7 +213,15 @@ class ResilientDOMObserver {
   validateElement(element) {
     if (!element) return false;
     if (!element.isConnected) return false;
-    if (element.offsetParent === null && element.tagName !== 'BODY') return false;
+
+    // Allow hidden elements in some cases (they may become visible)
+    // But check if completely removed from DOM
+    const rect = element.getBoundingClientRect();
+    const isCompletelyHidden = rect.width === 0 && rect.height === 0 &&
+                                element.offsetParent === null &&
+                                element.tagName !== 'BODY';
+
+    if (isCompletelyHidden) return false;
     if (element.hasAttribute('disabled')) return false;
     if (element.hasAttribute('readonly')) return false;
 
@@ -203,26 +229,48 @@ class ResilientDOMObserver {
   }
 
   /**
-   * Find and cache input element
+   * Find and cache input element with enhanced tracking
    */
-  async findInputElement() {
-    if (this.inputElement && this.validateElement(this.inputElement)) {
+  async findInputElement(force = false) {
+    const now = Date.now();
+
+    // Use cached element if valid and not forcing refresh
+    if (!force && this.inputElement && this.validateElement(this.inputElement)) {
+      // Throttle validation checks for performance
+      if (now - this.lastInputCheck < this.inputCheckThrottle) {
+        return this.inputElement;
+      }
+      this.lastInputCheck = now;
       return this.inputElement;
     }
 
+    // Clear cache
+    this.inputElement = null;
+    this.lastInputCheck = now;
+
+    // Try to find element using platform-specific selectors
     this.inputElement = this.findElement(this.selectors.inputArea);
 
     if (!this.inputElement) {
       // Wait for it to appear
       try {
+        console.log('[APE DOMObserver] Waiting for input element to appear...');
         this.inputElement = await waitForElement(
           this.selectors.inputArea[0],
           3000
         );
       } catch (e) {
-        console.warn('[APE] Input element not found');
+        console.warn('[APE DOMObserver] Input element not found after waiting');
         return null;
       }
+    }
+
+    if (this.inputElement) {
+      console.log('[APE DOMObserver] Input element found:', {
+        tag: this.inputElement.tagName,
+        type: this.inputElement.type,
+        contentEditable: this.inputElement.contentEditable
+      });
     }
 
     return this.inputElement;
@@ -437,6 +485,63 @@ class ResilientDOMObserver {
       this.observer.disconnect();
       this.observer = null;
     }
+  }
+
+  /**
+   * Get input element's container for positioning
+   */
+  getInputContainer(inputElement) {
+    if (!inputElement) return null;
+
+    // Platform-specific container detection
+    const containerSelectors = {
+      [PLATFORMS.CHATGPT]: ['form.w-full', 'div.relative.flex.h-full'],
+      [PLATFORMS.CLAUDE]: ['fieldset', 'div[class*="InputContainer"]'],
+      [PLATFORMS.GEMINI]: ['div.input-area-container', 'mat-form-field'],
+      [PLATFORMS.GENERIC]: ['form', 'div.input-container']
+    };
+
+    const selectors = containerSelectors[this.platform] || containerSelectors[PLATFORMS.GENERIC];
+
+    let parent = inputElement.parentElement;
+    let depth = 0;
+    const maxDepth = 10;
+
+    while (parent && parent !== document.body && depth < maxDepth) {
+      for (const selector of selectors) {
+        try {
+          if (parent.matches(selector)) {
+            return parent;
+          }
+        } catch (e) {
+          // Invalid selector
+        }
+      }
+
+      // Generic container detection
+      if (parent.tagName === 'FORM' || parent.tagName === 'FIELDSET') {
+        return parent;
+      }
+
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    return inputElement.parentElement;
+  }
+
+  /**
+   * Check if input is in centered state (new conversation)
+   */
+  isInputCentered(inputElement, containerElement) {
+    if (!inputElement || !containerElement) return false;
+
+    const rect = containerElement.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const centerY = rect.top + rect.height / 2;
+
+    // Input is considered centered if it's in the middle portion of viewport
+    return centerY > viewportHeight * 0.3 && centerY < viewportHeight * 0.7;
   }
 
   /**

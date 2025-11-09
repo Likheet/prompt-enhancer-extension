@@ -18,34 +18,58 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Smooth transitions for dynamic positioning */
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease-out;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
   z-index: 1000;
   opacity: 0;
   transform: scale(0.8);
   animation: ape-button-appear 0.3s ease-out 0.5s forwards;
+  /* Prevent layout shift during positioning */
+  will-change: left, right, top, bottom, transform;
+  /* Hardware acceleration for smooth animations */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 @keyframes ape-button-appear {
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1) translateZ(0);
   }
 }
 
+/* Dynamic positioning states */
+.ape-inline-button[data-position-state="centered"] {
+  /* Icon is positioned relative to centered input */
+  /* Positioning handled by DynamicIconPositioner */
+}
+
+.ape-inline-button[data-position-state="bottom"] {
+  /* Icon is in fixed bottom-left position */
+  /* Positioning handled by DynamicIconPositioner */
+}
+
+/* Smooth transition between states */
+.ape-inline-button[data-transitioning="true"] {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .ape-inline-button:hover {
-  transform: scale(1.05);
+  transform: scale(1.05) translateZ(0);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .ape-inline-button:active {
-  transform: scale(0.95);
+  transform: scale(0.95) translateZ(0);
 }
 
 .ape-inline-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-  transform: scale(1);
+  transform: scale(1) translateZ(0);
 }
 
 .ape-inline-button.ape-processing {
@@ -144,7 +168,43 @@
    Platform-Specific Overrides
    =========================== */
 
-/* Platform-specific adjustments can be added here if needed */
+/* ChatGPT-specific adjustments */
+body[data-platform="chatgpt"] .ape-inline-button {
+  /* Ensure compatibility with ChatGPT's UI transitions */
+}
+
+/* Claude-specific adjustments */
+body[data-platform="claude"] .ape-inline-button {
+  /* Ensure compatibility with Claude's UI */
+}
+
+/* Gemini-specific adjustments */
+body[data-platform="gemini"] .ape-inline-button {
+  /* Ensure compatibility with Gemini's Material Design */
+}
+
+/* ===========================
+   Adaptive Positioning Enhancements
+   =========================== */
+
+/* Ensure button stays visible during scroll */
+.ape-inline-button[data-scroll-adaptive="true"] {
+  position: sticky;
+  position: -webkit-sticky;
+}
+
+/* Viewport-aware sizing */
+@media (max-height: 600px) {
+  .ape-inline-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ape-inline-button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
 
 /* ===========================
    Responsive Design
@@ -192,6 +252,10 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .ape-inline-button {
+    will-change: auto;
   }
 }
 
