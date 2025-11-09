@@ -7,6 +7,7 @@ import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '..
 import { copyToClipboard, generateId } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import EnhancementPresets from './enhancement-presets.js';
+import DragAttachManager from './drag-attach-manager.js';
 
 class InlineUI {
   constructor(enhancer, extractor, domObserver, settings) {
@@ -21,6 +22,7 @@ class InlineUI {
     this.buttonId = `ape-inline-btn-${generateId()}`;
     this.presets = new EnhancementPresets();
     this.extensionInvalidatedNotified = false;
+    this.dragAttachManager = null;
 
     this.init();
   }
@@ -104,21 +106,54 @@ class InlineUI {
     // Create button
     this.currentButton = this.createEnhanceButton();
 
+    // Initialize drag-attach manager
+    this.dragAttachManager = new DragAttachManager(
+      this.currentButton,
+      this.domObserver,
+      (position) => this.saveButtonPosition(position)
+    );
+
     // Check for saved position preference
     const settings = await this.getSettings();
     const savedPosition = settings.buttonPosition;
 
-    if (savedPosition && savedPosition.preset) {
-      // Apply saved preset position
-      Object.assign(this.currentButton.style, {
-        position: 'fixed',
-        left: savedPosition.left || 'auto',
-        right: savedPosition.right || 'auto',
-        top: savedPosition.top || 'auto',
-        bottom: savedPosition.bottom || 'auto',
-        zIndex: '9999'
-      });
-      document.body.appendChild(this.currentButton);
+    if (savedPosition) {
+      if (savedPosition.mode === 'attached') {
+        // Try to load attached position
+        const attached = await this.dragAttachManager.loadAttachment(savedPosition);
+        if (!attached) {
+          // Fallback to default if attachment failed
+          console.warn('[APE InlineUI] Failed to load attachment, using default position');
+          this.positionButton(container, inputArea);
+        } else {
+          document.body.appendChild(this.currentButton);
+        }
+      } else if (savedPosition.preset) {
+        // Apply saved preset position
+        Object.assign(this.currentButton.style, {
+          position: 'fixed',
+          left: savedPosition.left || 'auto',
+          right: savedPosition.right || 'auto',
+          top: savedPosition.top || 'auto',
+          bottom: savedPosition.bottom || 'auto',
+          zIndex: '9999'
+        });
+        document.body.appendChild(this.currentButton);
+      } else if (savedPosition.mode === 'fixed') {
+        // Apply saved fixed position
+        Object.assign(this.currentButton.style, {
+          position: 'fixed',
+          left: savedPosition.left || 'auto',
+          right: savedPosition.right || 'auto',
+          top: savedPosition.top || 'auto',
+          bottom: savedPosition.bottom || 'auto',
+          zIndex: '9999'
+        });
+        document.body.appendChild(this.currentButton);
+      } else {
+        // Use platform-specific default positioning
+        this.positionButton(container, inputArea);
+      }
     } else {
       // Use platform-specific default positioning
       this.positionButton(container, inputArea);
@@ -254,6 +289,11 @@ class InlineUI {
           <span class="ape-context-menu-emoji">↗️</span>
           <span class="ape-context-menu-text">Top Right</span>
         </button>
+        <div class="ape-context-menu-divider"></div>
+        <button class="ape-context-menu-item" data-action="enable-dragging">
+          <span class="ape-context-menu-emoji">🎯</span>
+          <span class="ape-context-menu-text">Drag & Attach</span>
+        </button>
       </div>
       <div class="ape-context-menu-divider"></div>
       <button class="ape-context-menu-item" data-action="open-settings">
@@ -296,6 +336,10 @@ class InlineUI {
         // Change button position
         const position = action.replace('position-', '');
         await this.changeButtonPosition(position);
+        menu.remove();
+      } else if (action === 'enable-dragging') {
+        // Enable drag mode
+        await this.enableDragMode();
         menu.remove();
       } else if (action === 'open-settings') {
         browserCompat.sendMessage({ action: 'openOptions' });
@@ -369,6 +413,29 @@ class InlineUI {
     } catch (error) {
       console.error('[InlineUI] Failed to save button position:', error);
     }
+  }
+
+  /**
+   * Enable drag and attach mode
+   */
+  async enableDragMode() {
+    if (!this.currentButton || !this.dragAttachManager) return;
+
+    this.showToast('Drag the button to reposition or attach it to an element. Press ESC to cancel.', 'info');
+
+    await this.dragAttachManager.startDragMode((positionData) => {
+      if (positionData) {
+        if (positionData.mode === 'attached') {
+          const label = positionData.attachedTo.label;
+          const anchor = positionData.attachedTo.anchor;
+          this.showToast(`Button attached to ${label} (${anchor} side)`, 'success');
+        } else {
+          this.showToast('Button position saved', 'success');
+        }
+      } else {
+        this.showToast('Drag cancelled', 'info');
+      }
+    });
   }
 
   /**

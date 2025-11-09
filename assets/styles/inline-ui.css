@@ -587,4 +587,65 @@
   - ape-quick-editor-modal: 1000002 (above toast)
   - ape-shortcut-feedback: 1000003 (above quick editor)
   - ape-context-menu: 10000 (context menu)
+  - ape-snap-indicator: 10002 (drag mode snap indicator)
 */
+
+/* ===========================
+   Drag & Attach Styles
+   =========================== */
+
+/* Snap indicator shown during drag */
+.ape-snap-indicator {
+  position: fixed;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 2px solid white;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10002;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+}
+
+/* Pulse animation for snap indicator */
+@keyframes ape-snap-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+}
+
+.ape-snap-indicator.active {
+  animation: ape-snap-pulse 1s ease-in-out infinite;
+}
+
+/* Button in drag mode */
+.ape-inline-button.dragging {
+  cursor: move;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
+  transition: none;
+  z-index: 10001;
+}
+
+/* Attached indicator badge */
+.ape-inline-button.attached::after {
+  content: '📌';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 10px;
+  background: white;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
