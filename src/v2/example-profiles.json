@@ -1,0 +1,149 @@
+{
+  "profiles": [
+    {
+      "id": "chatgpt-main",
+      "name": "ChatGPT Main Chat",
+      "domain": "chatgpt.com",
+      "pathPattern": "/c/*",
+      "promptSelector": "textarea#prompt-textarea",
+      "anchorSelector": "form div.ms-auto.flex.items-center, div.flex.items-center.gap-2",
+      "mode": "toolbar",
+      "offsetX": "0px",
+      "offsetY": "0px",
+      "size": "32px",
+      "enabled": true,
+      "notes": "Integrates button into ChatGPT's action toolbar next to audio button"
+    },
+    {
+      "id": "chatgpt-openai",
+      "name": "ChatGPT (OpenAI domain)",
+      "domain": "chat.openai.com",
+      "pathPattern": "/c/*",
+      "promptSelector": "textarea#prompt-textarea",
+      "anchorSelector": "form div.ms-auto.flex.items-center, div.flex.items-center.gap-2",
+      "mode": "toolbar",
+      "offsetX": "0px",
+      "offsetY": "0px",
+      "size": "32px",
+      "enabled": true,
+      "notes": "Same as chatgpt.com but for old domain"
+    },
+    {
+      "id": "claude-chat",
+      "name": "Claude Chat Interface",
+      "domain": "claude.ai",
+      "pathPattern": "/chat/*",
+      "promptSelector": "div.ProseMirror[contenteditable=\"true\"], div[contenteditable=\"true\"][data-placeholder]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "16px",
+      "offsetY": "16px",
+      "size": "32px",
+      "enabled": true,
+      "notes": "Places button inside Claude's contenteditable input area"
+    },
+    {
+      "id": "gemini-google",
+      "name": "Google Gemini",
+      "domain": "gemini.google.com",
+      "pathPattern": null,
+      "promptSelector": "rich-textarea, div.ql-editor[contenteditable=\"true\"]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "16px",
+      "offsetY": "16px",
+      "size": "32px",
+      "enabled": true,
+      "notes": "Works with Gemini's rich textarea component"
+    },
+    {
+      "id": "perplexity-ai",
+      "name": "Perplexity AI",
+      "domain": "perplexity.ai",
+      "pathPattern": null,
+      "promptSelector": "textarea[placeholder*=\"Ask anything\"]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "12px",
+      "offsetY": "12px",
+      "size": "28px",
+      "enabled": true,
+      "notes": "Perplexity AI search interface"
+    },
+    {
+      "id": "huggingface-chat",
+      "name": "HuggingFace Chat",
+      "domain": "huggingface.co",
+      "pathPattern": "/chat/*",
+      "promptSelector": "textarea[placeholder*=\"Ask anything\"]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "12px",
+      "offsetY": "12px",
+      "size": "28px",
+      "enabled": true,
+      "notes": "HuggingFace chat interface"
+    },
+    {
+      "id": "poe-com",
+      "name": "Poe.com Chat",
+      "domain": "poe.com",
+      "pathPattern": null,
+      "promptSelector": "textarea[class*=\"GrowingTextArea\"]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "16px",
+      "offsetY": "16px",
+      "size": "32px",
+      "enabled": true,
+      "notes": "Poe.com multi-bot chat interface"
+    },
+    {
+      "id": "copilot-microsoft",
+      "name": "Microsoft Copilot",
+      "domain": "copilot.microsoft.com",
+      "pathPattern": null,
+      "promptSelector": "textarea[id*=\"userInput\"], div[contenteditable=\"true\"][role=\"textbox\"]",
+      "anchorSelector": null,
+      "mode": "inside-bottom-right",
+      "offsetX": "12px",
+      "offsetY": "12px",
+      "size": "28px",
+      "enabled": true,
+      "notes": "Microsoft Copilot (formerly Bing Chat)"
+    },
+    {
+      "id": "example-custom",
+      "name": "Example Custom Site",
+      "domain": "example.com",
+      "pathPattern": "/chat/*",
+      "promptSelector": "textarea.my-chat-input",
+      "anchorSelector": "div.input-container",
+      "mode": "inside-bottom-right",
+      "offsetX": "8px",
+      "offsetY": "8px",
+      "size": "24px",
+      "enabled": false,
+      "notes": "Template for creating custom site profiles. Set enabled: true to activate."
+    }
+  ],
+  "defaultProfile": {
+    "mode": "inside-bottom-right",
+    "offsetX": "12px",
+    "offsetY": "12px",
+    "size": "32px",
+    "minWidth": 300,
+    "minHeight": 60,
+    "preferBottom": true,
+    "scoreWeights": {
+      "size": 1.0,
+      "position": 0.5,
+      "semantics": 0.3
+    }
+  },
+  "metadata": {
+    "version": "2.0.0",
+    "description": "Example profile configurations for AI Prompt Enhancer extension",
+    "lastUpdated": "2025-01-10"
+  }
+}
