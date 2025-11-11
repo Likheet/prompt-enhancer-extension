@@ -81,29 +81,42 @@ class ResilientDOMObserver {
           'div[contenteditable="true"][data-placeholder]',
           'div.ProseMirror',
           'div[contenteditable="true"]',
-          'fieldset div[contenteditable="true"]'
+          'fieldset div[contenteditable="true"]',
+          'div[role="textbox"][contenteditable="true"]',
+          'div[data-testid="composer"] div[contenteditable="true"]',
+          'div[data-testid="prompt-editor"] div[contenteditable="true"]',
+          'textarea[aria-label*="Message"]',
+          'textarea[placeholder*="Message"]'
         ],
         sendButton: [
           'button[aria-label*="Send"]',
           'button[type="submit"]',
-          'button:has(svg)'
+          'button:has(svg)',
+          'button[data-testid*="composer-send"]',
+          'button[aria-label*="Send message"]'
         ],
         messageContainer: [
           'div[data-is-user]',
           'div.font-user-message',
-          'div.font-claude-message'
+          'div.font-claude-message',
+          'div[data-testid*="message"]'
         ],
         userMessage: [
           'div[data-is-user="true"]',
-          'div.font-user-message'
+          'div.font-user-message',
+          'div[data-testid*="message-user"]'
         ],
         assistantMessage: [
           'div[data-is-user="false"]',
-          'div.font-claude-message'
+          'div.font-claude-message',
+          'div[data-testid*="message-system"]',
+          'div[data-testid*="message-assistant"]'
         ],
         conversationArea: [
           'main',
-          'div[class*="ConversationContainer"]'
+          'div[class*="ConversationContainer"]',
+          'div[data-testid*="conversation"]',
+          'div[data-testid*="chat-root"]'
         ]
       },
 
@@ -195,7 +208,16 @@ class ResilientDOMObserver {
   validateElement(element) {
     if (!element) return false;
     if (!element.isConnected) return false;
-    if (element.offsetParent === null && element.tagName !== 'BODY') return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+      return false;
+    }
+    const rect = element.getBoundingClientRect();
+    const hasSize = rect && (rect.width > 0 || rect.height > 0);
+    const isFixed = style.position === 'fixed';
+    if (!hasSize && element.offsetParent === null && !isFixed && element.tagName !== 'BODY') {
+      return false;
+    }
     if (element.hasAttribute('disabled')) return false;
     if (element.hasAttribute('readonly')) return false;
 
@@ -213,13 +235,19 @@ class ResilientDOMObserver {
     this.inputElement = this.findElement(this.selectors.inputArea);
 
     if (!this.inputElement) {
-      // Wait for it to appear
-      try {
-        this.inputElement = await waitForElement(
-          this.selectors.inputArea[0],
-          3000
-        );
-      } catch (e) {
+      for (const selector of this.selectors.inputArea) {
+        try {
+          const candidate = await waitForElement(selector, 3000);
+          if (candidate && this.validateElement(candidate)) {
+            this.inputElement = candidate;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!this.inputElement) {
         console.warn('[APE] Input element not found');
         return null;
       }

@@ -6,6 +6,7 @@
 import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '../shared/constants.js';
 import { copyToClipboard, generateId } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
+import DOCKING_STRATEGIES from './docking-strategies.js';
 import EnhancementPresets from './enhancement-presets.js';
 
 class InlineUI {
@@ -21,6 +22,10 @@ class InlineUI {
     this.buttonId = `ape-inline-btn-${generateId()}`;
     this.presets = new EnhancementPresets();
     this.extensionInvalidatedNotified = false;
+    this.currentDockingTarget = null;
+    this.composerObserver = null;
+    this.cachedInputElement = null;
+    this.currentStrategyKey = null;
 
     this.init();
   }
@@ -94,56 +99,19 @@ class InlineUI {
       return;
     }
 
-    // Find the appropriate container for positioning
-    const container = this.findInputContainer(inputArea);
-    if (!container) {
-      console.warn('[APE InlineUI] Container not found');
-      return;
-    }
+    this.cachedInputElement = inputArea;
 
     // Create button
     this.currentButton = this.createEnhanceButton();
 
-    // Use platform-specific default positioning
-    this.positionButton(container, inputArea);
+    // Attempt to dock the button using platform-specific strategy
+    const docked = this.dockButton(inputArea);
+
+    if (!docked) {
+      this.applyFloatingFallback();
+    }
 
     console.log('[APE InlineUI] Button attached successfully');
-  }
-
-  /**
-   * Find the input container element
-   */
-  findInputContainer(inputElement) {
-    const platform = this.domObserver.platform;
-
-    // Platform-specific container logic
-    if (platform === 'chatgpt') {
-      // ChatGPT: find the parent form or flex container
-      let parent = inputElement.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.tagName === 'FORM' ||
-            parent.classList.contains('flex') ||
-            parent.querySelector('button[data-testid*="send"]')) {
-          return parent;
-        }
-        parent = parent.parentElement;
-      }
-      return inputElement.parentElement;
-    } else if (platform === 'claude') {
-      // Claude: find the fieldset or editor container
-      let parent = inputElement.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.tagName === 'FIELDSET' ||
-            parent.querySelector('button[type="submit"]')) {
-          return parent;
-        }
-        parent = parent.parentElement;
-      }
-      return inputElement.parentElement;
-    } else {
-      // Generic: use parent element
-      return inputElement.parentElement;
-    }
   }
 
   /**
@@ -293,166 +261,128 @@ class InlineUI {
   /**
    * Position button based on platform
    */
-  positionButton(container, inputElement) {
-    // Note: container parameter unused after switching to fixed positioning
-    // This is intentional - fixed positioning is simpler and more reliable
+  dockButton(inputElement) {
+    if (!this.currentButton) return false;
+
     const platform = this.domObserver.platform;
+    const strategy = DOCKING_STRATEGIES[platform] || DOCKING_STRATEGIES.generic;
 
-    // Platform-specific positioning strategies
-    const positions = {
-      chatgpt: () => {
-        const queryFirst = (selectors, root = document) => {
-          for (const selector of selectors) {
-            try {
-              const element = root.querySelector(selector);
-              if (element) return element;
-            } catch (error) {
-              continue;
-            }
-          }
-          return null;
-        };
+    const anchor = strategy.findAnchor(inputElement);
 
-        const audioButtonSelectors = [
-          'button[aria-label="Dictate button"]',
-          'button[aria-label*="Dictate"]',
-          'button[aria-label*="Voice"]',
-          'button[data-testid*="voice"]'
-        ];
+    if (!anchor || !anchor.container) {
+      this.clearDockingObserver();
+      return false;
+    }
 
-        const sendButtonSelectors = [
-          'button[data-testid="send-button"]',
-          'button[id="composer-submit-button"]',
-          'button[aria-label*="Send"]'
-        ];
+    this.resetButtonStyles();
+    strategy.applyStyles(this.currentButton, anchor.container);
 
-        const audioButton = queryFirst(audioButtonSelectors) || queryFirst(audioButtonSelectors, container || document);
-        const sendButton = queryFirst(sendButtonSelectors) || queryFirst(sendButtonSelectors, container || document);
+    if (anchor.position === 'before' && anchor.referenceNode) {
+      anchor.container.insertBefore(this.currentButton, anchor.referenceNode);
+    } else if (anchor.position === 'after' && anchor.referenceNode) {
+      anchor.container.insertBefore(this.currentButton, anchor.referenceNode.nextSibling);
+    } else {
+      anchor.container.appendChild(this.currentButton);
+    }
 
-        const resolveActionBar = (element) => {
-          if (!element) return null;
-          return element.closest('div.ms-auto') ||
-                 element.closest('div.flex.items-center') ||
-                 element.closest('div[data-testid="composer-actions"]') ||
-                 element.closest('div[role="toolbar"]');
-        };
-
-        let actionBar = resolveActionBar(audioButton) || resolveActionBar(sendButton);
-
-        if (!actionBar && container) {
-          actionBar = queryFirst([
-            'div.ms-auto.flex.items-center',
-            'div.ms-auto.flex',
-            'div.flex.items-center',
-            'div[data-testid*="composer-actions"]'
-          ], container);
-        }
-
-        if (!actionBar) {
-          actionBar = queryFirst([
-            'form div.ms-auto.flex.items-center',
-            'form div.ms-auto.flex',
-            'form div.flex.items-center',
-            'div[data-testid*="composer-actions"]'
-          ]);
-        }
-
-        if (actionBar) {
-          const findDirectChild = (candidate, parent) => {
-            let current = candidate;
-            while (current && current.parentElement && current.parentElement !== parent) {
-              current = current.parentElement;
-            }
-            return current && current.parentElement === parent ? current : null;
-          };
-
-          this.currentButton.classList.add('ape-inline-button-chatgpt');
-          Object.assign(this.currentButton.style, {
-            position: 'relative',
-            left: 'auto',
-            right: 'auto',
-            top: 'auto',
-            bottom: 'auto',
-            zIndex: '10'
-          });
-
-          const referenceNode = findDirectChild(audioButton, actionBar) || findDirectChild(sendButton, actionBar) || actionBar.firstElementChild;
-
-          if (referenceNode) {
-            actionBar.insertBefore(this.currentButton, referenceNode);
-          } else {
-            actionBar.appendChild(this.currentButton);
-          }
-
-          return;
-        }
-
-        // Fallback to previous fixed positioning if toolbar not found
-        this.currentButton.classList.remove('ape-inline-button-chatgpt');
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      },
-
-      claude: () => {
-        // Claude: FIXED positioning for reliability
-        // Position in bottom-left, similar to ChatGPT for consistency
-
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      },
-
-      gemini: () => {
-        // Gemini: FIXED positioning for reliability
-        // Position in bottom-left for consistency
-
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      },
-
-      generic: () => {
-        // Generic: FIXED positioning for reliability
-        // Default bottom-left position
-
-        Object.assign(this.currentButton.style, {
-          position: 'fixed',
-          left: '20px',
-          bottom: '100px',
-          right: 'auto',
-          top: 'auto',
-          zIndex: '9999'
-        });
-
-        document.body.appendChild(this.currentButton);
-      }
+    this.currentDockingTarget = {
+      container: anchor.container,
+      strategy
     };
+    this.currentStrategyKey = platform in DOCKING_STRATEGIES ? platform : 'generic';
 
-    // Execute platform-specific positioning or use generic
-    const positionFn = positions[platform] || positions.generic;
-    positionFn();
+    this.setupDockingObserver(anchor.container, strategy);
+
+    return true;
+  }
+
+  resetButtonStyles() {
+    if (!this.currentButton) return;
+    this.currentButton.classList.remove('ape-inline-button-chatgpt');
+    Object.assign(this.currentButton.style, {
+      position: '',
+      left: '',
+      right: '',
+      top: '',
+      bottom: '',
+      zIndex: '',
+      marginLeft: '',
+      marginRight: '',
+      width: '',
+      height: ''
+    });
+  }
+
+  applyFloatingFallback() {
+    if (!this.currentButton) return;
+
+    this.resetButtonStyles();
+
+    Object.assign(this.currentButton.style, {
+      position: 'fixed',
+      left: '20px',
+      bottom: '100px',
+      right: 'auto',
+      top: 'auto',
+      zIndex: '9999'
+    });
+
+    document.body.appendChild(this.currentButton);
+    this.clearDockingObserver();
+  }
+
+  setupDockingObserver(container, strategy) {
+    this.clearDockingObserver();
+    if (!container) return;
+
+    const observer = new MutationObserver(() => {
+      if (!this.currentButton) {
+        this.clearDockingObserver();
+        return;
+      }
+
+      if (!container.isConnected) {
+        this.clearDockingObserver();
+        this.domObserver.findInputElement().then((input) => {
+          if (input) {
+            this.cachedInputElement = input;
+          }
+          const success = this.dockButton(this.cachedInputElement);
+          if (!success) {
+            this.applyFloatingFallback();
+          }
+        }).catch(() => {
+          this.applyFloatingFallback();
+        });
+        return;
+      }
+
+      const stillDocked = container.contains(this.currentButton);
+      const stillValid = typeof strategy.validate === 'function' ? strategy.validate(container) : true;
+
+      if (!stillDocked || !stillValid) {
+        const success = this.dockButton(this.cachedInputElement);
+        if (!success) {
+          this.applyFloatingFallback();
+        }
+      }
+    });
+
+    observer.observe(container, {
+      childList: true,
+      subtree: true
+    });
+
+    this.composerObserver = observer;
+  }
+
+  clearDockingObserver() {
+    if (this.composerObserver) {
+      this.composerObserver.disconnect();
+      this.composerObserver = null;
+    }
+    this.currentDockingTarget = null;
+    this.currentStrategyKey = null;
   }
 
   /**
@@ -726,6 +656,8 @@ class InlineUI {
       this.currentButton.remove();
       this.currentButton = null;
     }
+    this.clearDockingObserver();
+    this.cachedInputElement = null;
   }
 }
 
