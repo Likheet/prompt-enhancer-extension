@@ -61,18 +61,50 @@ class InlineUI {
    * Monitor for chatbox appearance/disappearance
    */
   observeChatbox() {
-    const observer = new MutationObserver(() => {
-      // Check if button is still attached and valid
-      if (!this.isButtonAttached()) {
-        console.log('[APE InlineUI] Button detached, reattaching...');
-        this.attachButtonToChatbox();
+    // Store observer reference for cleanup
+    let reattachTimeout = null;
+    
+    this.composerObserver = new MutationObserver(() => {
+      // Debounce the reattachment check
+      if (reattachTimeout) {
+        clearTimeout(reattachTimeout);
       }
+      
+      reattachTimeout = setTimeout(() => {
+        // Check if button is still attached and valid
+        if (!this.isButtonAttached()) {
+          console.log('[APE InlineUI] Button detached, reattaching...');
+          this.attachButtonToChatbox();
+        }
+      }, 500); // Wait 500ms before checking
     });
 
-    observer.observe(document.body, {
+    this.composerObserver.observe(document.body, {
       childList: true,
       subtree: true
     });
+  }
+
+  /**
+   * Cleanup resources
+   */
+  destroy() {
+    console.log('[APE InlineUI] Cleaning up...');
+    
+    // Disconnect mutation observer
+    if (this.composerObserver) {
+      this.composerObserver.disconnect();
+      this.composerObserver = null;
+    }
+    
+    // Remove button from DOM
+    if (this.currentButton) {
+      this.currentButton.remove();
+      this.currentButton = null;
+    }
+    
+    // Clear cached elements
+    this.cachedInputElement = null;
   }
 
   /**
@@ -87,8 +119,16 @@ class InlineUI {
    * Attach button to chatbox
    */
   async attachButtonToChatbox() {
-    // Prevent multiple buttons
+    // Prevent multiple buttons - check both our reference AND the DOM
     if (this.currentButton && this.isButtonAttached()) {
+      return;
+    }
+
+    // Also check if a button with our ID already exists in the DOM
+    const existingButton = document.getElementById(this.buttonId);
+    if (existingButton) {
+      console.log('[APE InlineUI] Button already exists in DOM, reusing...');
+      this.currentButton = existingButton;
       return;
     }
 
@@ -125,13 +165,12 @@ class InlineUI {
     button.setAttribute('aria-label', 'Enhance Prompt (Alt+E)');
     button.title = 'Enhance Prompt (Alt+E)';
 
+    const iconUrl = chrome?.runtime?.getURL('assets/icons/icon-48.png') || 
+                    browser?.runtime?.getURL('assets/icons/icon-48.png');
+
     button.innerHTML = `
-      <svg class="ape-icon-enhance" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
-        <path d="M2 17L12 22L22 17"/>
-        <path d="M2 12L12 17L22 12"/>
-      </svg>
-      <svg class="ape-spinner-inline ape-hidden" width="20" height="20" viewBox="0 0 24 24">
+      <img class="ape-icon-enhance" src="${iconUrl}" alt="Enhance" style="width: 100%; height: 100%; display: block; object-fit: contain;">
+      <svg class="ape-spinner-inline ape-hidden" width="100%" height="100%" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"
                 fill="none" stroke-dasharray="40" stroke-dashoffset="10"/>
       </svg>
@@ -277,16 +316,28 @@ class InlineUI {
     this.resetButtonStyles();
     strategy.applyStyles(this.currentButton, anchor.container);
 
-    // Handle button insertion with optional wrapper (for Perplexity)
+    // Handle button insertion with optional wrapper (for Perplexity, AI Studio)
     let elementToInsert = this.currentButton;
     if (anchor.needsWrapper) {
-      // Wrap button in span if it's not already wrapped
-      if (!this.currentButton.parentElement || this.currentButton.parentElement.tagName !== 'SPAN') {
-        const wrapper = document.createElement('span');
+      const wrapperTag = anchor.wrapperTag || 'span';
+      const wrapperClass = anchor.wrapperClass || '';
+      const expectedTag = wrapperTag.toUpperCase();
+      
+      // Check if button is already wrapped correctly
+      const parent = this.currentButton.parentElement;
+      const isCorrectlyWrapped = parent && 
+                                 parent.tagName === expectedTag && 
+                                 (!wrapperClass || parent.classList.contains(wrapperClass));
+      
+      if (!isCorrectlyWrapped) {
+        const wrapper = document.createElement(wrapperTag);
+        if (wrapperClass) {
+          wrapper.className = wrapperClass;
+        }
         wrapper.appendChild(this.currentButton);
         elementToInsert = wrapper;
       } else {
-        elementToInsert = this.currentButton.parentElement;
+        elementToInsert = parent;
       }
     }
 
@@ -603,12 +654,7 @@ class InlineUI {
   showLoading() {
     if (!this.currentButton) return;
 
-    const icon = this.currentButton.querySelector('.ape-icon-enhance');
-    const spinner = this.currentButton.querySelector('.ape-spinner-inline');
-
-    if (icon) icon.classList.add('ape-hidden');
-    if (spinner) spinner.classList.remove('ape-hidden');
-
+    // Keep the icon visible and just add the processing class to make it spin
     this.currentButton.disabled = true;
     this.currentButton.classList.add('ape-processing');
   }
@@ -619,12 +665,7 @@ class InlineUI {
   hideLoading() {
     if (!this.currentButton) return;
 
-    const icon = this.currentButton.querySelector('.ape-icon-enhance');
-    const spinner = this.currentButton.querySelector('.ape-spinner-inline');
-
-    if (icon) icon.classList.remove('ape-hidden');
-    if (spinner) spinner.classList.add('ape-hidden');
-
+    // Remove the processing class to stop the spinning animation
     this.currentButton.disabled = false;
     this.currentButton.classList.remove('ape-processing');
   }
@@ -684,17 +725,6 @@ class InlineUI {
     }
   }
 
-  /**
-   * Cleanup/destroy
-   */
-  destroy() {
-    if (this.currentButton) {
-      this.currentButton.remove();
-      this.currentButton = null;
-    }
-    this.clearDockingObserver();
-    this.cachedInputElement = null;
-  }
 }
 
 export default InlineUI;

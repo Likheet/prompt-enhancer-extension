@@ -19,6 +19,25 @@ class AIPromptEnhancerExtension {
     this.keyboardShortcuts = null;
     this.settings = null;
     this.initialized = false;
+    this.contextInvalidated = false;
+  }
+
+  /**
+   * Cleanup all resources
+   */
+  destroy() {
+    console.log('[APE] Destroying extension instance...');
+    
+    if (this.inlineUI) {
+      this.inlineUI.destroy();
+      this.inlineUI = null;
+    }
+    
+    this.domObserver = null;
+    this.contextExtractor = null;
+    this.promptEnhancer = null;
+    this.keyboardShortcuts = null;
+    this.initialized = false;
   }
 
   /**
@@ -128,9 +147,28 @@ class AIPromptEnhancerExtension {
   }
 }
 
-// Initialize extension when script loads
-const extension = new AIPromptEnhancerExtension();
-extension.initialize();
-
-// Export for debugging
-window.APE_Extension = extension;
+// Prevent multiple initializations
+if (!window.APE_Extension || !window.APE_Extension.initialized) {
+  console.log('[APE] Starting new extension instance');
+  const extension = new AIPromptEnhancerExtension();
+  extension.initialize();
+  
+  // Export for debugging
+  window.APE_Extension = extension;
+  
+  // Detect extension context invalidation
+  try {
+    const port = browserCompat.runtime.connect({ name: 'keepalive' });
+    port.onDisconnect.addListener(() => {
+      console.warn('[APE] Extension context invalidated. Please refresh the page.');
+      // Mark extension as invalidated
+      if (window.APE_Extension) {
+        window.APE_Extension.contextInvalidated = true;
+      }
+    });
+  } catch (error) {
+    console.warn('[APE] Could not establish keepalive connection:', error);
+  }
+} else {
+  console.log('[APE] Extension already initialized, skipping...');
+}

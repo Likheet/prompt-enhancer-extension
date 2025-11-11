@@ -22,54 +22,115 @@ class BrowserCompat {
     return (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
   }
 
+  // Check if extension context is valid
+  isContextValid() {
+    try {
+      return !!(this.api && this.api.runtime && this.api.runtime.id);
+    } catch (error) {
+      return false;
+    }
+  }
+
   // Unified storage API with promises
   async storageGet(keys) {
+    if (!this.isContextValid()) {
+      throw new Error('Extension context invalidated');
+    }
+    
     return new Promise((resolve, reject) => {
-      this.api.storage.local.get(keys, (result) => {
-        if (this.api.runtime.lastError) {
-          reject(this.api.runtime.lastError);
-        } else {
-          resolve(result);
+      try {
+        if (!this.api.storage || !this.api.storage.local) {
+          reject(new Error('Storage API not available'));
+          return;
         }
-      });
+        
+        this.api.storage.local.get(keys, (result) => {
+          if (this.api.runtime.lastError) {
+            reject(this.api.runtime.lastError);
+          } else {
+            resolve(result);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
   async storageSet(items) {
+    if (!this.isContextValid()) {
+      throw new Error('Extension context invalidated');
+    }
+    
     return new Promise((resolve, reject) => {
-      this.api.storage.local.set(items, () => {
-        if (this.api.runtime.lastError) {
-          reject(this.api.runtime.lastError);
-        } else {
-          resolve();
+      try {
+        if (!this.api.storage || !this.api.storage.local) {
+          reject(new Error('Storage API not available'));
+          return;
         }
-      });
+        
+        this.api.storage.local.set(items, () => {
+          if (this.api.runtime.lastError) {
+            reject(this.api.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
   async storageRemove(keys) {
+    if (!this.isContextValid()) {
+      throw new Error('Extension context invalidated');
+    }
+    
     return new Promise((resolve, reject) => {
-      this.api.storage.local.remove(keys, () => {
-        if (this.api.runtime.lastError) {
-          reject(this.api.runtime.lastError);
-        } else {
-          resolve();
+      try {
+        if (!this.api.storage || !this.api.storage.local) {
+          reject(new Error('Storage API not available'));
+          return;
         }
-      });
+        
+        this.api.storage.local.remove(keys, () => {
+          if (this.api.runtime.lastError) {
+            reject(this.api.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
   // Message passing abstraction
   async sendMessage(message) {
+    if (!this.isContextValid()) {
+      throw new Error('Extension context invalidated');
+    }
+    
     return new Promise((resolve, reject) => {
-      this.api.runtime.sendMessage(message, (response) => {
-        if (this.api.runtime.lastError) {
-          reject(this.api.runtime.lastError);
-        } else {
-          resolve(response);
-        }
-      });
+      try {
+        this.api.runtime.sendMessage(message, (response) => {
+          if (this.api.runtime.lastError) {
+            reject(this.api.runtime.lastError);
+          } else {
+            resolve(response);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
+  }
+
+  // Runtime API passthrough
+  get runtime() {
+    return this.api.runtime;
   }
 
   // Listen for messages

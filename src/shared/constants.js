@@ -7,6 +7,7 @@ export const PLATFORMS = {
   CLAUDE: 'claude',
   GEMINI: 'gemini',
   PERPLEXITY: 'perplexity',
+  AI_STUDIO: 'aistudio',
   GENERIC: 'generic'
 };
 

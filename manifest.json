@@ -15,7 +15,8 @@
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "https://www.perplexity.ai/*"
+    "https://www.perplexity.ai/*",
+    "https://aistudio.google.com/*"
   ],
 
   "background": {
@@ -29,7 +30,8 @@
         "https://chatgpt.com/*",
         "https://claude.ai/*",
         "https://gemini.google.com/*",
-        "https://www.perplexity.ai/*"
+        "https://www.perplexity.ai/*",
+        "https://aistudio.google.com/*"
       ],
       "js": ["dist/content.js"],
       "css": ["assets/styles/inline-ui.css"],
@@ -41,8 +43,9 @@
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {
-      "16": "assets/icons/icon-16.png",
-      "48": "assets/icons/icon-48.png",
+      "16": "assets/icons/icon-16-zoomed.png",
+      "32": "assets/icons/icon-32-zoomed.png",
+      "48": "assets/icons/icon-48-zoomed.png",
       "128": "assets/icons/icon-128.png"
     }
   },

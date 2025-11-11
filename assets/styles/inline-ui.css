@@ -15,15 +15,16 @@
   height: 36px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: transparent !important;
+  color: transparent;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: none !important;
   z-index: 1000;
   opacity: 0;
   transform: scale(0.8);
   animation: ape-button-appear 0.3s ease-out 0.5s forwards;
+  padding: 0 !important;
 }
 
 .ape-inline-button-chatgpt {
@@ -47,7 +48,8 @@
 
 .ape-inline-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 .ape-inline-button:active {
@@ -61,8 +63,8 @@
 }
 
 .ape-inline-button.ape-processing {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  box-shadow: 0 4px 12px rgba(240, 147, 251, 0.4);
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 /* Icon states */
@@ -87,6 +89,11 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Icon spinning when processing */
+.ape-inline-button.ape-processing .ape-icon-enhance {
+  animation: ape-spin 0.8s linear infinite;
 }
 
 /* ===========================

@@ -68,23 +68,25 @@ export const DOCKING_STRATEGIES = {
         top: 'auto',
         bottom: 'auto',
         zIndex: '10',
-        width: '32px',
-        height: '32px',
-        minWidth: '32px',
-        minHeight: '32px',
-        borderRadius: '6px',
-        padding: '6px',
+        width: '36px',
+        height: '36px',
+        minWidth: '36px',
+        minHeight: '36px',
+        borderRadius: '0',
+        padding: '0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: '',
         marginRight: '12px',
         backgroundColor: 'transparent',
-        color: 'currentColor',
+        color: 'transparent',
         border: 'none',
-        boxShadow: '',
+        boxShadow: 'none',
         cursor: 'pointer',
-        transition: 'background-color 0.2s ease'
+        transition: 'transform 0.2s ease',
+        outline: 'none',
+        background: 'transparent'
       });
 
       if (document.dir === 'rtl') {
@@ -150,21 +152,24 @@ export const DOCKING_STRATEGIES = {
         bottom: 'auto',
         right: 'auto',
         top: 'auto',
-        width: 'auto',
-        height: '32px',
-        minWidth: '32px',
-        borderRadius: '0.5rem',
-        padding: '0 7.5px',
+        width: '36px',
+        height: '36px',
+        minWidth: '36px',
+        borderRadius: '0',
+        padding: '0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: '',
         marginRight: '',
-        backgroundColor: '',
-        color: '',
-        border: '',
-        boxShadow: '',
-        zIndex: ''
+        backgroundColor: 'transparent',
+        color: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+        zIndex: '',
+        outline: 'none',
+        background: 'transparent',
+        transition: 'transform 0.2s ease'
       });
 
       if (document.dir === 'rtl') {
@@ -242,21 +247,24 @@ export const DOCKING_STRATEGIES = {
         bottom: 'auto',
         right: 'auto',
         top: 'auto',
-        width: 'auto',
-        height: '32px',
-        minWidth: '32px',
-        borderRadius: '4px',
-        padding: '6px',
+        width: '36px',
+        height: '36px',
+        minWidth: '36px',
+        borderRadius: '0',
+        padding: '0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: '',
         marginRight: '6px',
-        backgroundColor: '',
-        color: '',
-        border: '',
-        boxShadow: '',
-        zIndex: ''
+        backgroundColor: 'transparent',
+        color: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+        zIndex: '',
+        outline: 'none',
+        background: 'transparent',
+        transition: 'transform 0.2s ease'
       });
 
       if (document.dir === 'rtl') {
@@ -334,25 +342,27 @@ export const DOCKING_STRATEGIES = {
         bottom: 'auto',
         right: 'auto',
         top: 'auto',
-        width: 'auto',
-        height: '32px',
-        minWidth: 'auto',
-        aspectRatio: '9/8',
-        borderRadius: '8px',
-        padding: '0px 4px',
+        width: '36px',
+        height: '36px',
+        minWidth: '36px',
+        aspectRatio: '1',
+        borderRadius: '0',
+        padding: '0',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: '',
         marginRight: '0px',
-        backgroundColor: '',
-        color: '',
-        border: '',
-        boxShadow: '',
+        backgroundColor: 'transparent',
+        color: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
         zIndex: '',
         fontSize: '14px',
-        transition: 'all 300ms ease-out',
-        cursor: 'pointer'
+        transition: 'transform 0.2s ease',
+        cursor: 'pointer',
+        outline: 'none',
+        background: 'transparent'
       });
 
       if (document.dir === 'rtl') {
@@ -370,6 +380,110 @@ export const DOCKING_STRATEGIES = {
         'div[contenteditable="true"]'
       ]);
 
+      return Boolean(inputElement && inputElement.isConnected);
+    }
+  },
+  aistudio: {
+    findAnchor() {
+      console.log('[APE AI Studio] Starting anchor search...');
+
+      // Strategy 1: Find the add circle button (ms-add-chunk-menu)
+      const addButton = document.querySelector('button[iconname="add_circle"], button[aria-label*="Insert assets"]');
+      console.log('[APE AI Studio] Add button found:', !!addButton);
+      
+      if (addButton) {
+        const buttonWrapper = addButton.closest('div.button-wrapper');
+        if (buttonWrapper) {
+          console.log('[APE AI Studio] Using button wrapper strategy');
+          return {
+            container: buttonWrapper.parentElement,
+            referenceNode: buttonWrapper,
+            position: 'before',
+            needsWrapper: true,
+            wrapperClass: 'button-wrapper',
+            wrapperTag: 'div'
+          };
+        }
+      }
+
+      // Strategy 2: Find button-wrapper divs in the prompt input container
+      const buttonWrappers = document.querySelectorAll('div.button-wrapper');
+      console.log('[APE AI Studio] Found', buttonWrappers.length, 'button wrappers');
+      
+      for (const wrapper of buttonWrappers) {
+        const addBtn = wrapper.querySelector('button[iconname="add_circle"]');
+        if (addBtn && wrapper.parentElement) {
+          console.log('[APE AI Studio] Using first button-wrapper with add button');
+          return {
+            container: wrapper.parentElement,
+            referenceNode: wrapper,
+            position: 'before',
+            needsWrapper: true,
+            wrapperClass: 'button-wrapper',
+            wrapperTag: 'div'
+          };
+        }
+      }
+
+      // Strategy 3: Fallback to prompt-input-wrapper-container
+      const promptContainer = document.querySelector('div.prompt-input-wrapper-container');
+      if (promptContainer) {
+        const buttonContainer = promptContainer.querySelector('div.button-wrapper');
+        if (buttonContainer) {
+          console.log('[APE AI Studio] Using prompt container fallback');
+          return {
+            container: buttonContainer.parentElement,
+            referenceNode: buttonContainer,
+            position: 'before',
+            needsWrapper: true,
+            wrapperClass: 'button-wrapper',
+            wrapperTag: 'div'
+          };
+        }
+      }
+
+      console.warn('[APE AI Studio] No anchor found!');
+      return null;
+    },
+    applyStyles(button) {
+      button.className = 'ape-inline-button ape-aistudio-button';
+      
+      Object.assign(button.style, {
+        position: 'relative',
+        left: 'auto',
+        bottom: 'auto',
+        right: 'auto',
+        top: 'auto',
+        width: '40px',
+        height: '40px',
+        minWidth: '40px',
+        borderRadius: '0',
+        padding: '0',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: '',
+        marginRight: '',
+        backgroundColor: 'transparent',
+        color: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+        zIndex: '',
+        transition: 'transform 0.2s ease',
+        cursor: 'pointer',
+        outline: 'none',
+        background: 'transparent'
+      });
+
+      if (document.dir === 'rtl') {
+        button.style.marginLeft = '';
+        button.style.marginRight = '';
+      }
+    },
+    validate(container) {
+      if (!container || !container.isConnected) return false;
+
+      const inputElement = document.querySelector('div[contenteditable="true"]');
       return Boolean(inputElement && inputElement.isConnected);
     }
   },
@@ -393,18 +507,21 @@ export const DOCKING_STRATEGIES = {
         zIndex: '9999',
         width: '48px',
         height: '48px',
-        borderRadius: '50%',
-        padding: '12px',
+        borderRadius: '0',
+        padding: '0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        backgroundColor: '#6366f1',
-        color: '#fff',
+        boxShadow: 'none',
+        backgroundColor: 'transparent',
+        color: 'transparent',
         border: 'none',
         cursor: 'pointer',
         marginLeft: '',
-        marginRight: ''
+        marginRight: '',
+        outline: 'none',
+        background: 'transparent',
+        transition: 'transform 0.2s ease'
       });
     },
     validate() {
@@ -437,18 +554,22 @@ export const DOCKING_STRATEGIES = {
         bottom: 'auto',
         right: 'auto',
         top: 'auto',
-        width: 'auto',
-        height: 'auto',
-        borderRadius: '4px',
-        padding: '8px',
+        width: '36px',
+        height: '36px',
+        borderRadius: '0',
+        padding: '0',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: '',
         marginRight: '',
-        backgroundColor: '',
-        color: '',
-        border: ''
+        backgroundColor: 'transparent',
+        color: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+        outline: 'none',
+        background: 'transparent',
+        transition: 'transform 0.2s ease'
       });
 
       if (document.dir === 'rtl') {

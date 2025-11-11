@@ -38,6 +38,10 @@ class ResilientDOMObserver {
       console.log('[APE] Platform detected: Perplexity');
       return PLATFORMS.PERPLEXITY;
     }
+    if (hostname.includes('aistudio.google.com')) {
+      console.log('[APE] Platform detected: AI Studio');
+      return PLATFORMS.AI_STUDIO;
+    }
 
     console.log('[APE] Platform detected: Generic');
     return PLATFORMS.GENERIC;
@@ -194,6 +198,42 @@ class ResilientDOMObserver {
           'main',
           '[role="main"]',
           'div[class*="conversation"]'
+        ]
+      },
+
+      [PLATFORMS.AI_STUDIO]: {
+        inputArea: [
+          'div[contenteditable="true"]',
+          'textarea[placeholder*="Enter prompt"]',
+          'textarea[placeholder*="Type prompt"]',
+          'textarea',
+          'div[role="textbox"]'
+        ],
+        sendButton: [
+          'button[aria-label*="Send"]',
+          'button[aria-label*="submit"]',
+          'button[type="submit"]',
+          'button:has(svg)',
+          'button[data-tooltip*="Send"]'
+        ],
+        messageContainer: [
+          'div[data-role="message"]',
+          'div[class*="message"]',
+          'div[role="article"]'
+        ],
+        userMessage: [
+          'div[data-role="user"]',
+          'div[class*="user"]'
+        ],
+        assistantMessage: [
+          'div[data-role="assistant"]',
+          'div[class*="assistant"]',
+          'div[class*="model"]'
+        ],
+        conversationArea: [
+          'main',
+          '[role="main"]',
+          'div[class*="chat"]'
         ]
       },
 
