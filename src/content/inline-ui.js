@@ -277,12 +277,25 @@ class InlineUI {
     this.resetButtonStyles();
     strategy.applyStyles(this.currentButton, anchor.container);
 
+    // Handle button insertion with optional wrapper (for Perplexity)
+    let elementToInsert = this.currentButton;
+    if (anchor.needsWrapper) {
+      // Wrap button in span if it's not already wrapped
+      if (!this.currentButton.parentElement || this.currentButton.parentElement.tagName !== 'SPAN') {
+        const wrapper = document.createElement('span');
+        wrapper.appendChild(this.currentButton);
+        elementToInsert = wrapper;
+      } else {
+        elementToInsert = this.currentButton.parentElement;
+      }
+    }
+
     if (anchor.position === 'before' && anchor.referenceNode) {
-      anchor.container.insertBefore(this.currentButton, anchor.referenceNode);
+      anchor.container.insertBefore(elementToInsert, anchor.referenceNode);
     } else if (anchor.position === 'after' && anchor.referenceNode) {
-      anchor.container.insertBefore(this.currentButton, anchor.referenceNode.nextSibling);
+      anchor.container.insertBefore(elementToInsert, anchor.referenceNode.nextSibling);
     } else {
-      anchor.container.appendChild(this.currentButton);
+      anchor.container.appendChild(elementToInsert);
     }
 
     this.currentDockingTarget = {
@@ -298,7 +311,11 @@ class InlineUI {
 
   resetButtonStyles() {
     if (!this.currentButton) return;
-    this.currentButton.classList.remove('ape-inline-button-chatgpt');
+    
+    // Remove all platform-specific classes
+    this.currentButton.className = 'ape-inline-button';
+    
+    // Reset all possible inline styles to empty string
     Object.assign(this.currentButton.style, {
       position: '',
       left: '',
@@ -308,8 +325,27 @@ class InlineUI {
       zIndex: '',
       marginLeft: '',
       marginRight: '',
+      marginTop: '',
+      marginBottom: '',
       width: '',
-      height: ''
+      height: '',
+      minWidth: '',
+      minHeight: '',
+      maxWidth: '',
+      maxHeight: '',
+      padding: '',
+      paddingTop: '',
+      paddingRight: '',
+      paddingBottom: '',
+      paddingLeft: '',
+      borderRadius: '',
+      display: '',
+      alignItems: '',
+      justifyContent: '',
+      backgroundColor: '',
+      color: '',
+      border: '',
+      boxShadow: ''
     });
   }
 

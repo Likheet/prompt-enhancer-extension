@@ -19,18 +19,27 @@ class ResilientDOMObserver {
    * Detect current platform
    */
   detectPlatform() {
-    const hostname = window.location.hostname;
+    const hostname = window.location.hostname.toLowerCase();
+    console.log('[APE] Detecting platform for hostname:', hostname);
 
-    if (hostname.includes('chat.openai.com') || hostname.includes('chatgpt.com')) {
+    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
+      console.log('[APE] Platform detected: ChatGPT');
       return PLATFORMS.CHATGPT;
     }
     if (hostname.includes('claude.ai')) {
+      console.log('[APE] Platform detected: Claude');
       return PLATFORMS.CLAUDE;
     }
     if (hostname.includes('gemini.google.com')) {
+      console.log('[APE] Platform detected: Gemini');
       return PLATFORMS.GEMINI;
     }
+    if (hostname.includes('perplexity.ai')) {
+      console.log('[APE] Platform detected: Perplexity');
+      return PLATFORMS.PERPLEXITY;
+    }
 
+    console.log('[APE] Platform detected: Generic');
     return PLATFORMS.GENERIC;
   }
 
@@ -156,6 +165,38 @@ class ResilientDOMObserver {
         ]
       },
 
+      [PLATFORMS.PERPLEXITY]: {
+        inputArea: [
+          'textarea[placeholder*="Ask anything"]',
+          'textarea[placeholder*="Type @"]',
+          'textarea',
+          'div[contenteditable="true"][role="textbox"]'
+        ],
+        sendButton: [
+          'button[aria-label*="Send"]',
+          'button[type="submit"]',
+          'button:has(svg)',
+          'button[data-testid*="submit"]'
+        ],
+        messageContainer: [
+          'div[class*="message"]',
+          'div[class*="Message"]'
+        ],
+        userMessage: [
+          'div[class*="user"]',
+          'div[class*="User"]'
+        ],
+        assistantMessage: [
+          'div[class*="assistant"]',
+          'div[class*="Assistant"]'
+        ],
+        conversationArea: [
+          'main',
+          '[role="main"]',
+          'div[class*="conversation"]'
+        ]
+      },
+
       [PLATFORMS.GENERIC]: {
         inputArea: [
           'textarea',
@@ -187,19 +228,78 @@ class ResilientDOMObserver {
   /**
    * Find element using multiple selector strategies
    */
-  findElement(selectorArray) {
+  matchesAnySelector(element, selectorArray) {
+    if (!element || !Array.isArray(selectorArray)) return false;
+
     for (const selector of selectorArray) {
+      if (!selector) continue;
       try {
-        const element = document.querySelector(selector);
-        if (element && this.validateElement(element)) {
-          return element;
+        if (element.matches(selector)) {
+          return true;
         }
-      } catch (e) {
-        // Invalid selector, continue to next
+      } catch (error) {
+        // Invalid selector, ignore and continue
         continue;
       }
     }
+
+    return false;
+  }
+
+  findActiveInputMatch(selectorArray) {
+    const activeElement = document.activeElement;
+    if (!activeElement) return null;
+
+    let current = activeElement;
+    while (current && current !== document.body && current !== document) {
+      if (this.matchesAnySelector(current, selectorArray) && this.validateElement(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
     return null;
+  }
+
+  findElement(selectorArray) {
+    if (!Array.isArray(selectorArray)) return null;
+
+    const activeMatch = this.findActiveInputMatch(selectorArray);
+    if (activeMatch) {
+      return activeMatch;
+    }
+
+    let preferredCandidate = null;
+    let lastValidCandidate = null;
+    const seen = new Set();
+
+    for (const selector of selectorArray) {
+      if (!selector) continue;
+
+      let nodeList;
+      try {
+        nodeList = document.querySelectorAll(selector);
+      } catch (error) {
+        // Invalid selector, skip to next
+        continue;
+      }
+
+      nodeList.forEach((element) => {
+        if (!element || seen.has(element)) return;
+        seen.add(element);
+
+        if (!this.validateElement(element)) return;
+
+        const activeElement = document.activeElement;
+        if (activeElement && (element === activeElement || element.contains(activeElement))) {
+          preferredCandidate = element;
+        }
+
+        lastValidCandidate = element;
+      });
+    }
+
+    return preferredCandidate || lastValidCandidate;
   }
 
   /**
@@ -228,32 +328,37 @@ class ResilientDOMObserver {
    * Find and cache input element
    */
   async findInputElement() {
-    if (this.inputElement && this.validateElement(this.inputElement)) {
+    const freshCandidate = this.findElement(this.selectors.inputArea);
+
+    if (freshCandidate) {
+      this.inputElement = freshCandidate;
       return this.inputElement;
     }
 
-    this.inputElement = this.findElement(this.selectors.inputArea);
+    if (this.inputElement &&
+        this.validateElement(this.inputElement) &&
+        this.matchesAnySelector(this.inputElement, this.selectors.inputArea)) {
+      return this.inputElement;
+    }
 
-    if (!this.inputElement) {
-      for (const selector of this.selectors.inputArea) {
-        try {
-          const candidate = await waitForElement(selector, 3000);
-          if (candidate && this.validateElement(candidate)) {
-            this.inputElement = candidate;
-            break;
-          }
-        } catch (e) {
-          continue;
+    for (const selector of this.selectors.inputArea) {
+      try {
+        const candidate = await waitForElement(selector, 3000);
+        if (!candidate) continue;
+
+        const resolved = this.findElement(this.selectors.inputArea) || candidate;
+        if (resolved && this.validateElement(resolved)) {
+          this.inputElement = resolved;
+          return this.inputElement;
         }
-      }
-
-      if (!this.inputElement) {
-        console.warn('[APE] Input element not found');
-        return null;
+      } catch (error) {
+        continue;
       }
     }
 
-    return this.inputElement;
+    console.warn('[APE] Input element not found');
+    this.inputElement = null;
+    return null;
   }
 
   /**
@@ -304,44 +409,132 @@ class ResilientDOMObserver {
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         inputElement.dispatchEvent(new Event('change', { bubbles: true }));
       } else if (inputElement.contentEditable === 'true') {
-        // For contenteditable
-        inputElement.focus();
+        const focusTarget = inputElement;
 
-        // Clear content
-        inputElement.innerHTML = '';
+        // Focus the editor without scrolling the page if possible
+        try {
+          focusTarget.focus({ preventScroll: true });
+        } catch (focusError) {
+          focusTarget.focus();
+        }
 
-        // Split text by newlines and create proper paragraph/br structure
-        const lines = enhancedText.split('\n');
-        const fragment = document.createDocumentFragment();
-        
-        lines.forEach((line, index) => {
-          // Create text node for the line
-          const textNode = document.createTextNode(line);
-          fragment.appendChild(textNode);
-          
-          // Add line break after each line except the last
-          if (index < lines.length - 1) {
-            fragment.appendChild(document.createElement('br'));
+        const ensureSelection = () => {
+          const selection = window.getSelection();
+          if (!selection) return;
+
+          const range = document.createRange();
+          range.selectNodeContents(focusTarget);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        };
+
+        const dispatchInputEvent = (target, type, eventOptions = {}) => {
+          const init = {
+            bubbles: true,
+            cancelable: type === 'beforeinput',
+            composed: true,
+            ...eventOptions
+          };
+
+          if (typeof InputEvent === 'function') {
+            try {
+              const event = new InputEvent(type, init);
+              return target.dispatchEvent(event);
+            } catch (error) {
+              const fallback = new Event(type, {
+                bubbles: true,
+                cancelable: init.cancelable,
+                composed: true
+              });
+              return target.dispatchEvent(fallback);
+            }
           }
+
+          const fallback = new Event(type, {
+            bubbles: true,
+            cancelable: init.cancelable,
+            composed: true
+          });
+          return target.dispatchEvent(fallback);
+        };
+
+        const execCommand = (command, value = null) => {
+          try {
+            return document.execCommand(command, false, value);
+          } catch (error) {
+            return false;
+          }
+        };
+
+        // Select the entire editor contents
+        ensureSelection();
+        if (!execCommand('selectAll')) {
+          ensureSelection();
+        }
+
+        // Notify the editor that content will be replaced
+        dispatchInputEvent(focusTarget, 'beforeinput', {
+          inputType: 'deleteContentBackward',
+          data: '',
+          dataTransfer: null
         });
-        
-        inputElement.appendChild(fragment);
 
-        // Trigger input event
-        inputElement.dispatchEvent(new InputEvent('input', {
-          bubbles: true,
-          cancelable: true,
-          inputType: 'insertText',
-          data: enhancedText
-        }));
+        // Remove existing content
+        if (!execCommand('delete')) {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            selection.deleteFromDocument();
+          } else {
+            focusTarget.innerHTML = '';
+          }
+        }
 
-        // Move cursor to end
+        // Ensure selection is ready for insertion
+        ensureSelection();
+
+        // Dispatch beforeinput for insertion
+        dispatchInputEvent(focusTarget, 'beforeinput', {
+          inputType: 'insertFromPaste',
+          data: enhancedText,
+          dataTransfer: null
+        });
+
+        // Try to insert via execCommand so editors observe the change
+        let inserted = execCommand('insertText', enhancedText);
+
+        if (!inserted) {
+          focusTarget.innerHTML = '';
+          const lines = enhancedText.split('\n');
+          const fragment = document.createDocumentFragment();
+
+          lines.forEach((line, index) => {
+            fragment.appendChild(document.createTextNode(line));
+            if (index < lines.length - 1) {
+              fragment.appendChild(document.createElement('br'));
+            }
+          });
+
+          focusTarget.appendChild(fragment);
+        }
+
+        // Fire standard input/change notifications
+        dispatchInputEvent(focusTarget, 'input', {
+          inputType: 'insertFromPaste',
+          data: enhancedText,
+          dataTransfer: null
+        });
+
+        focusTarget.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Place the caret at the end of the text
         const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(inputElement);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
+        if (selection) {
+          const range = document.createRange();
+          range.selectNodeContents(focusTarget);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
       }
 
       return true;

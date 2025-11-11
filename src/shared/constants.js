@@ -6,6 +6,7 @@ export const PLATFORMS = {
   CHATGPT: 'chatgpt',
   CLAUDE: 'claude',
   GEMINI: 'gemini',
+  PERPLEXITY: 'perplexity',
   GENERIC: 'generic'
 };
 

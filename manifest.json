@@ -14,7 +14,8 @@
     "https://chatgpt.com/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://www.perplexity.ai/*"
   ],
 
   "background": {
@@ -27,7 +28,8 @@
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
         "https://claude.ai/*",
-        "https://gemini.google.com/*"
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*"
       ],
       "js": ["dist/content.js"],
       "css": ["assets/styles/inline-ui.css"],
