@@ -119,8 +119,11 @@ class InlineUI {
    * Attach button to chatbox
    */
   async attachButtonToChatbox() {
+    console.log('[APE InlineUI] Attempting to attach button...');
+    
     // Prevent multiple buttons - check both our reference AND the DOM
     if (this.currentButton && this.isButtonAttached()) {
+      console.log('[APE InlineUI] Button already attached');
       return;
     }
 
@@ -134,11 +137,14 @@ class InlineUI {
 
     const inputArea = await this.domObserver.findInputElement();
     if (!inputArea) {
-      console.warn('[APE InlineUI] Input area not found, will retry...');
+      console.warn('[APE InlineUI] Input area not found, will retry in 2s...');
+      console.log('[APE InlineUI] Platform:', this.domObserver.platform);
+      console.log('[APE InlineUI] Looking for selectors:', this.domObserver.selectors.inputArea);
       setTimeout(() => this.attachButtonToChatbox(), 2000);
       return;
     }
 
+    console.log('[APE InlineUI] Input area found:', inputArea.tagName, inputArea.className);
     this.cachedInputElement = inputArea;
 
     // Create button
@@ -148,7 +154,10 @@ class InlineUI {
     const docked = this.dockButton(inputArea);
 
     if (!docked) {
+      console.warn('[APE InlineUI] Docking failed, using floating fallback');
       this.applyFloatingFallback();
+    } else {
+      console.log('[APE InlineUI] Button docked successfully');
     }
 
     console.log('[APE InlineUI] Button attached successfully');

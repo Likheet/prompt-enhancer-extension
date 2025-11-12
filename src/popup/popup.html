@@ -9,21 +9,41 @@
 <body>
   <div class="popup-container">
     <header class="popup-header">
-      <h1>✨ AI Prompt Enhancer</h1>
-      <p class="popup-subtitle">Enhance your AI prompts intelligently</p>
+      <h1>Prompt Enhancer</h1>
+      <p class="popup-subtitle">Intelligent prompt optimization for AI conversations</p>
     </header>
 
     <main class="popup-content">
-      <!-- Subscription Section -->
+      <!-- API Key Section -->
       <section class="section compact">
-        <h2 class="section-title">Subscription</h2>
-        <div id="subscription-info" class="subscription-card">
-          <div class="subscription-badge">
-            <span id="subscription-type">Free Tier</span>
-          </div>
-          <p class="subscription-desc" id="subscription-desc">
-            Rule-based prompt enhancement
+        <div class="section-header">
+          <h2 class="section-title">Gemini API Key</h2>
+          <button id="toggle-byok" class="toggle-btn">Setup</button>
+        </div>
+
+        <div id="byok-config" class="config-panel hidden">
+          <p class="help-text">
+            Insert your Gemini API key for AI-powered enhancements.
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link">Get Key →</a>
           </p>
+
+          <div class="form-group">
+            <label for="gemini-api-key">API Key</label>
+            <input
+              type="password"
+              id="gemini-api-key"
+              placeholder="AIza...">
+            <button id="toggle-key-visibility" class="icon-btn" type="button">
+              👁️
+            </button>
+          </div>
+
+          <div class="button-group">
+            <button id="save-api-key" class="btn btn-primary">Save Key</button>
+            <button id="remove-api-key" class="btn btn-secondary hidden">Remove Key</button>
+          </div>
+
+          <div id="api-key-status" class="status-message hidden"></div>
         </div>
       </section>
 
@@ -36,7 +56,7 @@
           <label class="template-card" for="template-standard">
             <input type="radio" name="prompt-template" id="template-standard" value="standard">
             <div class="template-content">
-              <div class="template-title">⚡ Direct Enhancer</div>
+              <div class="template-title">Direct Enhancer</div>
               <p class="template-desc">Keep Gemini focused on rewriting your prompt directly with no commentary or formatting extras.</p>
             </div>
           </label>
@@ -44,7 +64,7 @@
           <label class="template-card" for="template-structured">
             <input type="radio" name="prompt-template" id="template-structured" value="structured">
             <div class="template-content">
-              <div class="template-title">🧭 Structured Blueprint</div>
+              <div class="template-title">Structured Blueprint</div>
               <p class="template-desc">Transform short or vague requests into a role/objective/deliverables format for richer answers.</p>
             </div>
           </label>
@@ -52,7 +72,7 @@
           <label class="template-card" for="template-custom">
             <input type="radio" name="prompt-template" id="template-custom" value="custom">
             <div class="template-content">
-              <div class="template-title">🛠️ Custom Instructions</div>
+              <div class="template-title">Custom Instructions</div>
               <p class="template-desc">Use your own template. Remember to include <code>{{PROMPT}}</code> where the original text should be inserted.</p>
             </div>
           </label>
@@ -73,15 +93,6 @@
         <h2 class="section-title">Settings</h2>
 
         <div class="setting-item">
-          <label for="enhancement-level">Enhancement Level</label>
-          <select id="enhancement-level" class="select">
-            <option value="light">Light</option>
-            <option value="moderate">Moderate</option>
-            <option value="aggressive">Aggressive</option>
-          </select>
-        </div>
-
-        <div class="setting-item">
           <label for="context-window">Context Window</label>
           <input
             type="number"
@@ -91,67 +102,53 @@
             value="10"
             class="input">
         </div>
-
-        <div class="setting-item checkbox-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="auto-enhance" class="checkbox">
-            <span>Auto-enhance on focus</span>
-          </label>
-
-          <label class="checkbox-label">
-            <input type="checkbox" id="show-diff" class="checkbox" checked>
-            <span>Show changes diff</span>
-          </label>
-        </div>
-
-        <button id="save-settings" class="btn btn-primary btn-full">Save Settings</button>
       </section>
 
       <!-- Stats Section -->
       <section class="section compact">
         <h2 class="section-title">Usage Statistics</h2>
-        <div class="stats-grid">
-          <div class="stat-card">
+        <div class="stats-container">
+          <div class="stat-item">
+            <div class="stat-header">
+              <span class="stat-label">Total Enhancements</span>
+            </div>
             <div class="stat-value" id="total-enhancements">0</div>
-            <div class="stat-label">Total</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <div class="stat-header">
+              <span class="stat-label">API Enhanced</span>
+            </div>
             <div class="stat-value" id="byok-enhancements">0</div>
-            <div class="stat-label">BYOK</div>
           </div>
         </div>
       </section>
 
-      <!-- BYOK Section (moved to bottom) -->
-      <section class="section compact" id="byok-section">
-        <div class="section-header">
-          <h2 class="section-title">🚀 Upgrade to BYOK</h2>
-          <button id="toggle-byok" class="toggle-btn">Setup</button>
+      <!-- Site Management Section -->
+      <section class="section compact">
+        <h2 class="section-title">Site Management</h2>
+        <p class="section-subtitle">Enable the extension on any website with text input</p>
+        
+        <div class="current-site-card" id="current-site-card">
+          <div class="current-site-info">
+            <div class="site-details">
+              <div class="site-name" id="current-site-name">Not on a supported site</div>
+              <div class="site-url" id="current-site-url">—</div>
+            </div>
+          </div>
+          <button id="toggle-site-btn" class="btn-toggle-site" disabled>
+            <span class="toggle-site-text">Enable</span>
+          </button>
         </div>
 
-        <div id="byok-config" class="config-panel hidden">
-          <p class="help-text">
-            Use your own Gemini API key for AI-powered enhancements.
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link">Get Key →</a>
-          </p>
-
-          <div class="form-group">
-            <label for="gemini-api-key">Gemini API Key</label>
-            <input
-              type="password"
-              id="gemini-api-key"
-              placeholder="AIza...">
-            <button id="toggle-key-visibility" class="icon-btn" type="button">
-              👁️
-            </button>
+        <div class="managed-sites">
+          <div class="managed-sites-header">
+            <span class="managed-sites-label">Managed Sites</span>
+            <span class="managed-sites-count" id="managed-sites-count">0</span>
           </div>
-
-          <div class="button-group">
-            <button id="save-api-key" class="btn btn-primary">Save Key</button>
-            <button id="remove-api-key" class="btn btn-secondary hidden">Remove Key</button>
+          <div id="managed-sites-list" class="managed-sites-list">
+            <!-- Sites will be dynamically inserted here -->
           </div>
-
-          <div id="api-key-status" class="status-message hidden"></div>
         </div>
       </section>
 
@@ -159,16 +156,27 @@
       <section class="section compact">
         <h2 class="section-title">Support</h2>
         <div class="support-links">
-          <a href="#" class="support-link">📖 Docs</a>
-          <a href="#" class="support-link">🐛 Report</a>
-          <a href="#" class="support-link">💬 Feedback</a>
+          <a href="#" class="support-link">Documentation</a>
+          <a href="#" class="support-link">Report Issue</a>
+          <a href="#" class="support-link">Feedback</a>
         </div>
       </section>
     </main>
 
     <footer class="popup-footer">
-      <p>Version 0.1.0 | Made with ❤️</p>
+      <p>Version 0.1.0</p>
     </footer>
+  </div>
+
+  <!-- Save Bar -->
+  <div id="save-bar" class="save-bar hidden">
+    <div class="save-bar-content">
+      <span class="save-bar-text">You have unsaved changes</span>
+      <div class="save-bar-actions">
+        <button id="cancel-settings" class="btn btn-secondary btn-sm">Cancel</button>
+        <button id="save-settings" class="btn btn-primary btn-sm">Save</button>
+      </div>
+    </div>
   </div>
 
   <script src="popup.js" type="module"></script>

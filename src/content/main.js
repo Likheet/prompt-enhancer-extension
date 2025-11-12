@@ -49,6 +49,15 @@ class AIPromptEnhancerExtension {
     console.log('[APE] Initializing AI Prompt Enhancer...');
 
     try {
+      // Check if site is disabled
+      const hostname = window.location.hostname;
+      const isDisabled = await this.isSiteDisabled(hostname);
+      
+      if (isDisabled) {
+        console.log('[APE] Extension disabled for this site:', hostname);
+        return;
+      }
+
       // Wait for page to be ready
       if (document.readyState === 'loading') {
         await new Promise(resolve => {
@@ -112,6 +121,47 @@ class AIPromptEnhancerExtension {
       // Wait a bit for dynamic content
       setTimeout(resolve, 2000);
     });
+  }
+
+  /**
+   * Check if site should be enabled
+   */
+  async isSiteDisabled(hostname) {
+    try {
+      const result = await browserCompat.storageGet(['managedSites']);
+      const managedSites = result.managedSites || [];
+      const siteConfig = managedSites.find(s => hostname.includes(s.hostname));
+      
+      console.log('[APE] Checking site status for:', hostname);
+      console.log('[APE] Managed sites:', managedSites);
+      console.log('[APE] Site config found:', siteConfig);
+      
+      // Check if this is a native platform
+      const nativeDomains = [
+        'chatgpt.com',
+        'chat.openai.com',
+        'claude.ai',
+        'gemini.google.com',
+        'perplexity.ai',
+        'aistudio.google.com'
+      ];
+      const isNativePlatform = nativeDomains.some(domain => hostname.includes(domain));
+      
+      if (siteConfig) {
+        // Explicit configuration exists - use it
+        console.log('[APE] Using explicit config, enabled:', siteConfig.enabled);
+        return !siteConfig.enabled;
+      } else {
+        // No explicit configuration:
+        // - Native platforms: enabled by default
+        // - Custom sites: disabled by default
+        console.log('[APE] No config found, is native platform:', isNativePlatform);
+        return !isNativePlatform;
+      }
+    } catch (error) {
+      console.error('[APE] Failed to check site status:', error);
+      return false;
+    }
   }
 
   /**

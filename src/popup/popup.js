@@ -10,13 +10,20 @@ class PopupController {
   constructor() {
     this.settings = null;
     this.subscription = null;
+    this.originalSettings = null; // Track original values for change detection
+    this.hasUnsavedChanges = false;
+    this.currentTab = null;
+    this.managedSites = [];
     this.init();
   }
 
   async init() {
     await this.loadData();
+    await this.loadCurrentTab();
+    await this.loadManagedSites();
     this.setupEventListeners();
     this.updateUI();
+    this.updateSiteManagement();
   }
 
   /**
@@ -32,6 +39,9 @@ class PopupController {
         ...DEFAULT_SETTINGS,
         ...(settingsResponse || {})
       };
+      
+      // Store original settings for change detection
+      this.originalSettings = JSON.parse(JSON.stringify(this.settings));
 
       // Load subscription info
       const subResponse = await browserCompat.sendMessage({
@@ -73,16 +83,20 @@ class PopupController {
       this.toggleKeyVisibility();
     });
 
-    // Save settings
+    // Save bar buttons
     document.getElementById('save-settings')?.addEventListener('click', () => {
       this.saveSettings();
+    });
+    
+    document.getElementById('cancel-settings')?.addEventListener('click', () => {
+      this.cancelChanges();
     });
 
     // Prompt template selection
     document.querySelectorAll('input[name="prompt-template"]').forEach((radio) => {
-      radio.addEventListener('change', async (event) => {
+      radio.addEventListener('change', (event) => {
         this.handleTemplateSelection(event.target.value);
-        await this.saveSettings({ silent: true });
+        this.checkForChanges();
       });
     });
 
@@ -90,7 +104,13 @@ class PopupController {
     const customTemplateInput = document.getElementById('custom-template-input');
     customTemplateInput?.addEventListener('input', (event) => {
       this.settings.customPromptTemplate = event.target.value;
-      this.queueTemplateSave();
+      this.checkForChanges();
+    });
+
+    // Context window changes
+    const contextWindow = document.getElementById('context-window');
+    contextWindow?.addEventListener('input', () => {
+      this.checkForChanges();
     });
 
     // Load current settings into form
@@ -98,18 +118,13 @@ class PopupController {
   }
 
   /**
-   * Update UI based on subscription status
+   * Update UI based on API key status
    */
   updateUI() {
-    const subscriptionType = document.getElementById('subscription-type');
-    const subscriptionDesc = document.getElementById('subscription-desc');
     const removeKeyBtn = document.getElementById('remove-api-key');
     const apiKeyInput = document.getElementById('gemini-api-key');
 
     if (this.subscription?.type === 'byok') {
-      subscriptionType.textContent = '🚀 BYOK Tier';
-      subscriptionDesc.textContent = 'AI-powered enhancements with Gemini API';
-
       // Show remove button
       removeKeyBtn?.classList.remove('hidden');
 
@@ -118,9 +133,6 @@ class PopupController {
         apiKeyInput.placeholder = this.subscription.apiKeyMasked;
       }
     } else {
-      subscriptionType.textContent = '⚡ Free Tier';
-      subscriptionDesc.textContent = 'Rule-based prompt enhancement with basic features';
-
       // Hide remove button
       removeKeyBtn?.classList.add('hidden');
     }
@@ -164,7 +176,7 @@ class PopupController {
       });
 
       if (response.success) {
-        this.showStatus('✓ BYOK activated successfully!', 'success');
+        this.showStatus('✓ API key saved successfully!', 'success');
 
         // Clear input
         if (apiKeyInput) apiKeyInput.value = '';
@@ -192,10 +204,10 @@ class PopupController {
   }
 
   /**
-   * Remove API key and return to free tier
+   * Remove API key
    */
   async removeAPIKey() {
-    if (!confirm('Remove API key and return to Free tier?')) {
+    if (!confirm('Remove your API key?')) {
       return;
     }
 
@@ -205,7 +217,7 @@ class PopupController {
       });
 
       if (response.success) {
-        this.showStatus('✓ Returned to Free tier', 'success');
+        this.showStatus('✓ API key removed', 'success');
 
         // Reload data and update UI
         await this.loadData();
@@ -255,26 +267,15 @@ class PopupController {
       customTemplateInput.value = this.settings.customPromptTemplate || '';
     }
 
-    const enhancementLevel = document.getElementById('enhancement-level');
     const contextWindow = document.getElementById('context-window');
-    const autoEnhance = document.getElementById('auto-enhance');
-    const showDiff = document.getElementById('show-diff');
-
-    if (enhancementLevel) enhancementLevel.value = this.settings.enhancementLevel;
     if (contextWindow) contextWindow.value = this.settings.contextWindow;
-    if (autoEnhance) autoEnhance.checked = this.settings.autoEnhance;
-    if (showDiff) showDiff.checked = this.settings.showDiff;
   }
 
   /**
    * Save settings
    */
-  async saveSettings(options = {}) {
-    const { silent = false } = options;
-    const enhancementLevel = document.getElementById('enhancement-level')?.value;
+  async saveSettings() {
     const contextWindowValue = parseInt(document.getElementById('context-window')?.value, 10);
-    const autoEnhance = document.getElementById('auto-enhance')?.checked;
-    const showDiff = document.getElementById('show-diff')?.checked;
     const templateType = document.querySelector('input[name="prompt-template"]:checked')?.value || 'standard';
     const customTemplate = document.getElementById('custom-template-input')?.value?.trim() || '';
 
@@ -284,16 +285,13 @@ class PopupController {
 
     const newSettings = {
       ...this.settings,
-      enhancementLevel,
       contextWindow: resolvedContextWindow,
-      autoEnhance,
-      showDiff,
       promptTemplateType: templateType,
       customPromptTemplate: customTemplate
     };
 
     const saveBtn = document.getElementById('save-settings');
-    if (!silent && saveBtn) {
+    if (saveBtn) {
       saveBtn.textContent = 'Saving...';
       saveBtn.disabled = true;
     }
@@ -305,20 +303,70 @@ class PopupController {
       });
 
       this.settings = newSettings;
-      if (!silent) {
-        this.showGeneralSuccess('Settings saved successfully!');
-      }
+      this.originalSettings = JSON.parse(JSON.stringify(newSettings));
+      this.hideSaveBar();
     } catch (error) {
       console.error('[APE Popup] Save settings error:', error);
-      if (!silent) {
-        this.showGeneralError('Failed to save settings');
-      }
     } finally {
-      if (!silent && saveBtn) {
-        saveBtn.textContent = 'Save Settings';
+      if (saveBtn) {
+        saveBtn.textContent = 'Save';
         saveBtn.disabled = false;
       }
     }
+  }
+  
+  /**
+   * Cancel changes and revert to original settings
+   */
+  cancelChanges() {
+    // Revert to original settings
+    this.settings = JSON.parse(JSON.stringify(this.originalSettings));
+    this.loadSettingsIntoForm();
+    this.hideSaveBar();
+  }
+  
+  /**
+   * Check if current form values differ from original settings
+   */
+  checkForChanges() {
+    const currentContextWindow = parseInt(document.getElementById('context-window')?.value, 10);
+    const currentTemplate = document.querySelector('input[name="prompt-template"]:checked')?.value || 'standard';
+    const currentCustomTemplate = document.getElementById('custom-template-input')?.value?.trim() || '';
+    
+    const hasChanges = 
+      currentContextWindow !== this.originalSettings.contextWindow ||
+      currentTemplate !== this.originalSettings.promptTemplateType ||
+      currentCustomTemplate !== this.originalSettings.customPromptTemplate;
+    
+    if (hasChanges !== this.hasUnsavedChanges) {
+      this.hasUnsavedChanges = hasChanges;
+      if (hasChanges) {
+        this.showSaveBar();
+      } else {
+        this.hideSaveBar();
+      }
+    }
+  }
+  
+  /**
+   * Show the save bar
+   */
+  showSaveBar() {
+    const saveBar = document.getElementById('save-bar');
+    if (saveBar) {
+      saveBar.classList.remove('hidden');
+    }
+  }
+  
+  /**
+   * Hide the save bar
+   */
+  hideSaveBar() {
+    const saveBar = document.getElementById('save-bar');
+    if (saveBar) {
+      saveBar.classList.add('hidden');
+    }
+    this.hasUnsavedChanges = false;
   }
 
   /**
@@ -351,16 +399,6 @@ class PopupController {
   }
 
   /**
-   * Debounced save for custom template edits
-   */
-  queueTemplateSave() {
-    clearTimeout(this.templateSaveTimeout);
-    this.templateSaveTimeout = setTimeout(() => {
-      this.saveSettings({ silent: true });
-    }, 400);
-  }
-
-  /**
    * Update usage statistics
    */
   updateStats(stats) {
@@ -371,6 +409,221 @@ class PopupController {
 
     if (totalElem) totalElem.textContent = stats.totalEnhancements || 0;
     if (byokElem) byokElem.textContent = stats.byokEnhancements || 0;
+  }
+
+  /**
+   * Load current tab information
+   */
+  async loadCurrentTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      this.currentTab = tab;
+    } catch (error) {
+      console.error('[APE Popup] Failed to load current tab:', error);
+    }
+  }
+
+  /**
+   * Load managed sites from storage
+   */
+  async loadManagedSites() {
+    try {
+      const result = await browserCompat.storageGet(['managedSites']);
+      this.managedSites = result.managedSites || [];
+      console.log('[APE Popup] Loaded managed sites:', this.managedSites);
+    } catch (error) {
+      console.error('[APE Popup] Failed to load managed sites:', error);
+      this.managedSites = [];
+    }
+  }
+
+  /**
+   * Save managed sites to storage
+   */
+  async saveManagedSites() {
+    try {
+      await browserCompat.storageSet({ managedSites: this.managedSites });
+      console.log('[APE Popup] Saved managed sites:', this.managedSites);
+    } catch (error) {
+      console.error('[APE Popup] Failed to save managed sites:', error);
+    }
+  }
+
+  /**
+   * Update site management UI
+   */
+  updateSiteManagement() {
+    if (!this.currentTab?.url) return;
+
+    const url = new URL(this.currentTab.url);
+    const hostname = url.hostname;
+
+    // Update current site card
+    const siteNameElem = document.getElementById('current-site-name');
+    const siteUrlElem = document.getElementById('current-site-url');
+    const toggleBtn = document.getElementById('toggle-site-btn');
+
+    if (hostname && !hostname.startsWith('chrome') && !hostname.startsWith('about')) {
+      const isNativePlatform = this.isNativePlatform(hostname);
+      const siteConfig = this.managedSites.find(s => s.hostname === hostname);
+      
+      // For native platforms: default enabled unless explicitly disabled
+      // For custom sites: default disabled unless explicitly enabled
+      const defaultState = isNativePlatform ? true : false;
+      const isEnabled = siteConfig?.enabled ?? defaultState;
+
+      siteNameElem.textContent = this.getFriendlyName(hostname);
+      siteUrlElem.textContent = hostname;
+
+      toggleBtn.disabled = false;
+      toggleBtn.classList.toggle('enabled', isEnabled);
+      toggleBtn.querySelector('.toggle-site-text').textContent = isEnabled ? 'Disable' : 'Enable';
+
+      // Update event listener
+      toggleBtn.onclick = () => this.toggleCurrentSite();
+    } else {
+      siteNameElem.textContent = 'Not available on this page';
+      siteUrlElem.textContent = hostname || '—';
+      toggleBtn.disabled = true;
+      toggleBtn.classList.remove('enabled');
+      toggleBtn.querySelector('.toggle-site-text').textContent = 'Not Available';
+    }
+
+    // Update managed sites list
+    this.renderManagedSites();
+  }
+
+  /**
+   * Check if hostname is a native/built-in supported platform
+   */
+  isNativePlatform(hostname) {
+    const nativeDomains = [
+      'chatgpt.com',
+      'chat.openai.com',
+      'claude.ai',
+      'gemini.google.com',
+      'perplexity.ai',
+      'aistudio.google.com'
+    ];
+    
+    return nativeDomains.some(domain => hostname.includes(domain));
+  }
+
+  /**
+   * Get friendly name for hostname
+   */
+  getFriendlyName(hostname) {
+    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) return 'ChatGPT';
+    if (hostname.includes('claude.ai')) return 'Claude';
+    if (hostname.includes('gemini.google.com')) return 'Gemini';
+    if (hostname.includes('perplexity.ai')) return 'Perplexity';
+    if (hostname.includes('aistudio.google.com')) return 'Google AI Studio';
+    return hostname;
+  }
+
+  /**
+   * Toggle current site enabled/disabled
+   */
+  async toggleCurrentSite() {
+    if (!this.currentTab?.url) return;
+
+    const url = new URL(this.currentTab.url);
+    const hostname = url.hostname;
+
+    const isNativePlatform = this.isNativePlatform(hostname);
+    const existingIndex = this.managedSites.findIndex(s => s.hostname === hostname);
+    
+    if (existingIndex >= 0) {
+      // Toggle existing site
+      this.managedSites[existingIndex].enabled = !this.managedSites[existingIndex].enabled;
+    } else {
+      // Add new site with opposite of default state
+      // Native platforms default to enabled, so add as disabled
+      // Custom sites default to disabled, so add as enabled
+      this.managedSites.push({
+        hostname,
+        name: this.getFriendlyName(hostname),
+        enabled: !isNativePlatform, // Toggle the default
+        addedAt: Date.now()
+      });
+    }
+
+    await this.saveManagedSites();
+    this.updateSiteManagement();
+
+    // Reload the tab to apply changes
+    try {
+      await chrome.tabs.reload(this.currentTab.id);
+    } catch (error) {
+      console.log('[APE Popup] Failed to reload tab:', error);
+    }
+  }
+
+  /**
+   * Remove a managed site
+   */
+  async removeManagedSite(hostname) {
+    this.managedSites = this.managedSites.filter(s => s.hostname !== hostname);
+    await this.saveManagedSites();
+    this.updateSiteManagement();
+
+    // If removing current site, reload the tab
+    if (this.currentTab?.url) {
+      const currentHostname = new URL(this.currentTab.url).hostname;
+      if (currentHostname === hostname) {
+        try {
+          await chrome.tabs.reload(this.currentTab.id);
+        } catch (error) {
+          console.log('[APE Popup] Failed to reload tab:', error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Render managed sites list
+   */
+  renderManagedSites() {
+    const listElem = document.getElementById('managed-sites-list');
+    const countElem = document.getElementById('managed-sites-count');
+
+    if (!listElem || !countElem) return;
+
+    countElem.textContent = this.managedSites.length;
+
+    if (this.managedSites.length === 0) {
+      listElem.innerHTML = '<div class="managed-sites-empty">No managed sites yet</div>';
+      return;
+    }
+
+    // Sort by name
+    const sortedSites = [...this.managedSites].sort((a, b) => 
+      a.name.localeCompare(b.name)
+    );
+
+    listElem.innerHTML = sortedSites.map(site => `
+      <div class="managed-site-item">
+        <div class="managed-site-info">
+          <div class="managed-site-details">
+            <div class="managed-site-name">${site.name}</div>
+            <div class="managed-site-status ${site.enabled ? 'enabled' : 'disabled'}">
+              ${site.enabled ? 'Enabled' : 'Disabled'}
+            </div>
+          </div>
+        </div>
+        <button class="btn-remove-site" data-hostname="${site.hostname}">
+          Remove
+        </button>
+      </div>
+    `).join('');
+
+    // Add event listeners to remove buttons
+    listElem.querySelectorAll('.btn-remove-site').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const hostname = btn.getAttribute('data-hostname');
+        this.removeManagedSite(hostname);
+      });
+    });
   }
 
   /**
@@ -391,39 +644,6 @@ class PopupController {
     }
   }
 
-  /**
-   * Show general success message (temporary)
-   */
-  showGeneralSuccess(message) {
-    const saveBtn = document.getElementById('save-settings');
-    if (saveBtn) {
-      const originalText = saveBtn.textContent;
-      saveBtn.textContent = message;
-      saveBtn.style.background = '#10b981';
-
-      setTimeout(() => {
-        saveBtn.textContent = originalText;
-        saveBtn.style.background = '';
-      }, 2000);
-    }
-  }
-
-  /**
-   * Show general error message (temporary)
-   */
-  showGeneralError(message) {
-    const saveBtn = document.getElementById('save-settings');
-    if (saveBtn) {
-      const originalText = saveBtn.textContent;
-      saveBtn.textContent = message;
-      saveBtn.style.background = '#ef4444';
-
-      setTimeout(() => {
-        saveBtn.textContent = originalText;
-        saveBtn.style.background = '';
-      }, 2000);
-    }
-  }
 }
 
 // Initialize popup when DOM is ready
