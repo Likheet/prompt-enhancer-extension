@@ -285,48 +285,32 @@ export const DOCKING_STRATEGIES = {
     findAnchor() {
       console.log('[APE Perplexity] Starting anchor search...');
       
-      // Strategy 1: Find the right toolbar wrapper
+      // Primary strategy: place button next to the sources/globe button inside the right toolbar
       const rightToolbar = document.querySelector('div[data-cplx-component="query-box-pplx-right-toolbar-components-wrapper"]');
       console.log('[APE Perplexity] Right toolbar found:', !!rightToolbar);
       if (rightToolbar) {
-        console.log('[APE Perplexity] Using right toolbar strategy');
+        const globeButton = rightToolbar.querySelector('button[data-testid="sources-switcher-button"]');
+        console.log('[APE Perplexity] Globe button found:', !!globeButton);
         return {
           container: rightToolbar,
-          referenceNode: rightToolbar.firstChild,
+          referenceNode: globeButton || rightToolbar.firstChild,
           position: 'before',
-          needsWrapper: true
+          needsWrapper: false
         };
       }
 
-      // Strategy 2: Find the sources switcher button's parent
-      const sourcesSwitcher = document.querySelector('button[data-testid="sources-switcher-button"]');
-      console.log('[APE Perplexity] Sources switcher found:', !!sourcesSwitcher);
-      if (sourcesSwitcher) {
-        const parent = sourcesSwitcher.closest('div[data-cplx-component="query-box-pplx-right-toolbar-components-wrapper"]') ||
-                      sourcesSwitcher.parentElement?.parentElement;
-        if (parent) {
-          console.log('[APE Perplexity] Using sources switcher parent strategy');
+      // Fallback Strategy 1: Find the contenteditable input area directly
+      const contentEditableInput = document.querySelector('#ask-input[contenteditable="true"]');
+      console.log('[APE Perplexity] Contenteditable input (fallback) found:', !!contentEditableInput);
+      if (contentEditableInput) {
+        const parentFlex = contentEditableInput.closest('div[class*="relative"], div.flex');
+        if (parentFlex) {
+          console.log('[APE Perplexity] Using contenteditable parent flex fallback');
           return {
-            container: parent,
-            referenceNode: parent.firstChild,
-            position: 'before',
-            needsWrapper: true
-          };
-        }
-      }
-
-      // Strategy 3: Find any toolbar with matching pattern
-      const toolbars = document.querySelectorAll('div.flex.items-center, div[class*="items-center"][class*="justify"]');
-      console.log('[APE Perplexity] Found', toolbars.length, 'potential toolbars');
-      for (const toolbar of toolbars) {
-        const hasButtons = toolbar.querySelector('button[data-testid], button[aria-label]');
-        if (hasButtons && toolbar.closest('div[class*="query-box"], div[class*="input"]')) {
-          console.log('[APE Perplexity] Using generic toolbar strategy');
-          return {
-            container: toolbar,
-            referenceNode: toolbar.firstChild,
-            position: 'before',
-            needsWrapper: true
+            container: parentFlex,
+            referenceNode: parentFlex.firstChild,
+            position: 'append',
+            needsWrapper: false
           };
         }
       }
@@ -338,43 +322,24 @@ export const DOCKING_STRATEGIES = {
       button.className = 'ape-inline-button ape-perplexity-button';
       Object.assign(button.style, {
         position: 'relative',
-        left: 'auto',
-        bottom: 'auto',
-        right: 'auto',
-        top: 'auto',
-        width: '36px',
-        height: '36px',
-        minWidth: '36px',
-        aspectRatio: '1',
-        borderRadius: '0',
-        padding: '0',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '0px',
+        marginRight: '4px',
+        marginLeft: '0',
         backgroundColor: 'transparent',
         color: 'transparent',
         border: 'none',
         boxShadow: 'none',
-        zIndex: '',
-        fontSize: '14px',
-        transition: 'transform 0.2s ease',
-        cursor: 'pointer',
-        outline: 'none',
-        background: 'transparent'
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 'auto'
       });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '0px';
-        button.style.marginRight = '';
-      }
     },
     validate(container) {
       if (!container || !container.isConnected) return false;
 
       // Check if we're in a valid input/actions area
       const inputElement = queryFirst([
+        'div[contenteditable="true"][id="ask-input"]',
         'textarea[placeholder*="Ask"]',
         'textarea',
         'div[contenteditable="true"]'

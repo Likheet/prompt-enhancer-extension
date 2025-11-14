@@ -57,7 +57,36 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const PROMPT_TEMPLATES = {
-  standard: `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):\n\n{{PROMPT}}`,
+  standard: `CONTEXT EVALUATION: Analyze if conversation history is relevant. Use context only if the input contains pronouns without antecedents ("it," "this," "that"), references to previous topics ("also," "continue," "as mentioned"), or builds on prior requests. If the input is self-contained or pivots to a new topic, ignore history and treat as standalone.
+
+ENHANCEMENT LEVEL: \${enhancementLevel}
+
+Light: Preserve original phrasing, add only essential missing elements
+Moderate: Balance preservation with improvement, add structure where needed
+Aggressive: Comprehensive transformation for maximum clarity and precision
+
+PRESET FOCUS: \${presetFocus}
+
+Technical: Emphasize specifications, constraints, measurable criteria, technical precision
+Creative: Enhance descriptive language, stylistic guidance, creative parameters, vision clarity
+Business: Add success metrics, stakeholder context, deliverables, professional framing
+Academic: Include methodology, research parameters, analytical depth, citation requirements
+Conversational: Maintain natural tone while adding clarity and helpful context
+General: Balanced enhancement across all dimensions
+
+Transform the input by enhancing these five dimensions:
+
+CLARITY: Eliminate ambiguity, refine wording, structure information logically
+SPECIFICITY: Add concrete details, quantifiable metrics, explicit examples, targeted parameters
+CONTEXT: Incorporate background information, use cases, audience details, domain knowledge
+CONSTRAINTS: Define boundaries, scope, format requirements, style guidelines, success criteria
+ACTIONABILITY: Use active instructions, specify deliverables, include evaluation methods, establish measurable outcomes
+
+\${conversationContext}
+
+INPUT: \${userInput}
+
+Output only the enhanced prompt with no meta-commentary, explanations, formatting markup, or quotation marks.`,
   structured: `You are a Prompt Enhancement Specialist. Transform the user's input into a structured prompt using this EXACT format.
 
 CRITICAL FORMATTING RULES:

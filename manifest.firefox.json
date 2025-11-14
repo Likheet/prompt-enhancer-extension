@@ -1,0 +1,77 @@
+{
+  "manifest_version": 3,
+  "name": "AI Prompt Enhancer",
+  "version": "0.1.0",
+  "description": "Context-aware prompt optimization for AI chat interfaces",
+
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "optional_host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://www.perplexity.ai/*",
+    "https://aistudio.google.com/*"
+  ],
+
+  "background": {
+    "scripts": ["firefox-background.js"],
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "css": ["assets/styles/inline-ui.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16-zoomed.png",
+      "32": "assets/icons/icon-32-zoomed.png",
+      "48": "assets/icons/icon-48-zoomed.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+
+  "options_page": "src/options/options.html",
+
+  "icons": {
+    "16": "assets/icons/icon-16-zoomed.png",
+    "48": "assets/icons/icon-48-zoomed.png",
+    "128": "assets/icons/icon-128.png"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "prompt-enhancer@likheet",
+        "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    }
+  }
+}

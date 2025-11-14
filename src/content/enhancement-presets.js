@@ -193,8 +193,10 @@ Return ONLY the enhanced prompt without any explanation.`,
   }
 
   buildEnhancementRequest(systemPrompt, context, settings = {}) {
-    const promptText = context.currentPrompt || '';
+    const userInput = context.currentPrompt || '';
     const templateType = settings.promptTemplateType || 'standard';
+    const enhancementLevel = settings.enhancementLevel || 'moderate';
+    const currentPreset = settings.currentEnhancementType || 'balanced';
 
     let template;
     if (templateType === 'custom' && settings.customPromptTemplate?.trim()) {
@@ -203,26 +205,96 @@ Return ONLY the enhanced prompt without any explanation.`,
       template = PROMPT_TEMPLATES[templateType] || PROMPT_TEMPLATES.standard;
     }
 
-    if (!template.includes('{{PROMPT}}')) {
-      template = `${template}\n\n{{PROMPT}}`;
+    // For legacy templates that use {{PROMPT}}
+    if (template.includes('{{PROMPT}}')) {
+      let request = template.replace(/{{PROMPT}}/g, userInput);
+      
+      if (systemPrompt) {
+        request = `${systemPrompt.trim()}\n\n${request}`;
+      }
+
+      if (context.conversationHistory && context.conversationHistory.length > 0) {
+        const recentMessages = context.conversationHistory.slice(-3);
+        const contextSummary = recentMessages
+          .map((msg, idx) => `${idx + 1}. [${msg.role}]: ${msg.content.substring(0, 200)}`)
+          .join('\n');
+
+        request += `\n\nConversation Snapshot:\n${contextSummary}`;
+      }
+
+      return request;
     }
 
-    let request = template.replace(/{{PROMPT}}/g, promptText);
+    // For new dynamic templates with ${variables}
+    let request = template;
 
+    // Add system prompt if provided (for preset-specific instructions)
     if (systemPrompt) {
       request = `${systemPrompt.trim()}\n\n${request}`;
     }
 
-    if (context.conversationHistory && context.conversationHistory.length > 0) {
-      const recentMessages = context.conversationHistory.slice(-3);
+    // Replace enhancement level
+    request = request.replace(/\$\{enhancementLevel\}/g, this.formatEnhancementLevel(enhancementLevel));
+
+    // Map preset to focus area
+    const presetFocusMap = {
+      'concise': 'General',
+      'detailed': 'General',
+      'balanced': 'General',
+      'technical': 'Technical',
+      'creative': 'Creative',
+      'custom': 'General'
+    };
+    const presetFocus = presetFocusMap[currentPreset] || 'General';
+    request = request.replace(/\$\{presetFocus\}/g, presetFocus);
+
+    // Replace user input
+    request = request.replace(/\$\{userInput\}/g, userInput);
+
+    // Intelligent context inclusion
+    const conversationHistory = context.conversationHistory || [];
+    const needsContext = this.contextIsRelevant(userInput, conversationHistory);
+    
+    if (needsContext && conversationHistory.length > 0) {
+      const recentMessages = conversationHistory.slice(-3);
       const contextSummary = recentMessages
         .map((msg, idx) => `${idx + 1}. [${msg.role}]: ${msg.content.substring(0, 200)}`)
         .join('\n');
-
-      request += `\n\nConversation Snapshot:\n${contextSummary}`;
+      
+      const conversationContext = `CONVERSATION HISTORY:\n${contextSummary}\n`;
+      request = request.replace(/\$\{conversationContext\}/g, conversationContext);
+    } else {
+      // Remove the conversation context placeholder
+      request = request.replace(/\$\{conversationContext\}\s*/g, '');
     }
 
     return request;
+  }
+
+  formatEnhancementLevel(level) {
+    const levelMap = {
+      'light': 'Light',
+      'moderate': 'Moderate',
+      'aggressive': 'Aggressive'
+    };
+    return levelMap[level] || 'Moderate';
+  }
+
+  contextIsRelevant(userInput, conversationHistory) {
+    if (!conversationHistory || conversationHistory.length === 0) return false;
+    if (!userInput) return false;
+
+    const contextIndicators = [
+      /\b(it|this|that|these|those)\b/i,
+      /\b(also|too|additionally|furthermore|moreover)\b/i,
+      /\b(continue|keep|following|previous|earlier)\b/i,
+      /\b(as (I|we|you) (mentioned|said|discussed|noted))\b/i,
+      /\b(the (above|earlier|prior|previous))\b/i,
+      /\b(same|similar|like before)\b/i,
+      /\b(another|more|still)\b/i
+    ];
+
+    return contextIndicators.some(pattern => pattern.test(userInput));
   }
 
   cleanEnhancedPrompt(enhanced, options = {}) {

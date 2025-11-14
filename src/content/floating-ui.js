@@ -4,7 +4,7 @@
  */
 
 import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES } from '../shared/constants.js';
-import { copyToClipboard, generateId } from '../shared/utils.js';
+import { copyToClipboard, generateId, renderStaticHTML } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 
 class FloatingUI {
@@ -34,7 +34,7 @@ class FloatingUI {
 
     const container = document.createElement('div');
     container.id = UI_CONSTANTS.CONTAINER_ID;
-    container.innerHTML = this.getUITemplate();
+    renderStaticHTML(container, this.getUITemplate());
 
     document.body.appendChild(container);
 
@@ -270,9 +270,10 @@ class FloatingUI {
       const changesList = document.getElementById('ape-changes');
 
       if (changesSection && changesList) {
-        changesList.innerHTML = result.changes
+        const changesMarkup = result.changes
           .map(change => `<span class="ape-change-badge">${change}</span>`)
           .join('');
+        renderStaticHTML(changesList, changesMarkup);
         changesSection.classList.remove('ape-hidden');
       }
     }

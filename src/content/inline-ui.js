@@ -4,7 +4,7 @@
  */
 
 import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '../shared/constants.js';
-import { copyToClipboard, generateId } from '../shared/utils.js';
+import { copyToClipboard, generateId, renderStaticHTML } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import DOCKING_STRATEGIES from './docking-strategies.js';
 import EnhancementPresets from './enhancement-presets.js';
@@ -177,13 +177,13 @@ class InlineUI {
     const iconUrl = chrome?.runtime?.getURL('assets/icons/icon-48.png') || 
                     browser?.runtime?.getURL('assets/icons/icon-48.png');
 
-    button.innerHTML = `
+    renderStaticHTML(button, `
       <img class="ape-icon-enhance" src="${iconUrl}" alt="Enhance" style="width: 100%; height: 100%; display: block; object-fit: contain;">
       <svg class="ape-spinner-inline ape-hidden" width="100%" height="100%" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"
                 fill="none" stroke-dasharray="40" stroke-dashoffset="10"/>
       </svg>
-    `;
+    `);
 
     button.addEventListener('click', (e) => {
       e.preventDefault();
@@ -218,7 +218,7 @@ class InlineUI {
     menu.id = 'ape-context-menu';
     menu.className = 'ape-context-menu';
 
-    menu.innerHTML = `
+    renderStaticHTML(menu, `
       <div class="ape-context-menu-header">
         <span>✨ Prompt Templates</span>
       </div>
@@ -239,7 +239,7 @@ class InlineUI {
         <span class="ape-context-menu-emoji">⚙️</span>
         <span class="ape-context-menu-text">Open Settings</span>
       </button>
-    `;
+    `);
 
     // Position menu near click
     menu.style.position = 'fixed';
@@ -700,10 +700,10 @@ class InlineUI {
       warning: '⚠'
     };
 
-    toast.innerHTML = `
+    renderStaticHTML(toast, `
       <span class="ape-toast-icon">${icons[type] || icons.info}</span>
       <span class="ape-toast-message">${message}</span>
-    `;
+    `);
 
     document.body.appendChild(toast);
 

@@ -1,3 +1,5 @@
+import { renderStaticHTML } from '../shared/utils.js';
+
 /**
  * ButtonController
  * Creates, positions, and manages the enhance button lifecycle
@@ -73,7 +75,7 @@ class ButtonController {
     button.title = 'Enhance Prompt';
 
     // Button icon (sparkles emoji and loading spinner)
-    button.innerHTML = `
+    renderStaticHTML(button, `
       <span class="pe-icon" aria-hidden="true">✨</span>
       <span class="pe-spinner pe-hidden" aria-hidden="true">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
@@ -89,7 +91,7 @@ class ButtonController {
           </path>
         </svg>
       </span>
-    `;
+    `);
 
     // Add click handler
     button.addEventListener('click', (e) => {
@@ -362,7 +364,7 @@ class ButtonController {
         this.promptElement.focus();
 
         // Clear and set new content
-        this.promptElement.innerHTML = '';
+        this.promptElement.replaceChildren();
 
         // Handle newlines properly
         const lines = newText.split('\n');

@@ -7,6 +7,7 @@ import EnhancementPresets from '../content/enhancement-presets.js';
 import { DEFAULT_SETTINGS, ENHANCEMENT_PRESETS, STORAGE_KEYS } from '../shared/constants.js';
 import browserCompat from '../shared/browser-compat.js';
 import { TEST_MODE_ENABLED, HARDCODED_API_KEY, VERBOSE_LOGGING } from '../shared/test-config.js';
+import { renderStaticHTML } from '../shared/utils.js';
 
 class OptionsPage {
   constructor() {
@@ -78,7 +79,7 @@ class OptionsPage {
     const container = document.getElementById('enhancement-types');
     const allPresets = this.presets.getAllPresets();
 
-    container.innerHTML = allPresets.map(preset => `
+    const presetCards = allPresets.map(preset => `
       <div class="enhancement-type-card" data-preset-key="${preset.key}">
         <input
           type="radio"
@@ -96,6 +97,8 @@ class OptionsPage {
         </label>
       </div>
     `).join('');
+
+    renderStaticHTML(container, presetCards);
 
     // Show custom section if custom preset is selected
     if (this.settings.currentEnhancementType === 'custom') {
@@ -115,13 +118,15 @@ class OptionsPage {
       const select = document.getElementById(shortcutId);
       const currentValue = this.settings.shortcuts?.[shortcutKeys[index]];
 
-      select.innerHTML = allPresets
+      const optionsMarkup = allPresets
         .filter(p => p.key !== 'custom') // Exclude custom from shortcuts
         .map(preset => `
           <option value="${preset.key}" ${currentValue === preset.key ? 'selected' : ''}>
             ${preset.emoji} ${preset.name}
           </option>
         `).join('');
+
+      renderStaticHTML(select, optionsMarkup);
     });
   }
 

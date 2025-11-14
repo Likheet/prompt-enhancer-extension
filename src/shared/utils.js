@@ -50,10 +50,50 @@ export function generateId() {
 /**
  * Sanitize HTML to prevent XSS
  */
+const HTML_ESCAPE_LOOKUP = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+};
+
+const HTML_ESCAPE_REGEX = /[&<>"']/g;
+
 export function sanitizeHTML(html) {
-  const temp = document.createElement('div');
-  temp.textContent = html;
-  return temp.innerHTML;
+  if (typeof html !== 'string') {
+    return '';
+  }
+
+  return html.replace(HTML_ESCAPE_REGEX, char => HTML_ESCAPE_LOOKUP[char] || char);
+}
+
+const DOM_PARSER = typeof DOMParser !== 'undefined' ? new DOMParser() : null;
+
+/**
+ * Safely replace element content using DOMParser to avoid innerHTML
+ */
+export function renderStaticHTML(target, html) {
+  if (!target) return;
+
+  if (!html) {
+    target.replaceChildren();
+    return;
+  }
+
+  if (!DOM_PARSER) {
+    target.textContent = html;
+    return;
+  }
+
+  const parsed = DOM_PARSER.parseFromString(`<body>${html}</body>`, 'text/html');
+  const fragment = document.createDocumentFragment();
+
+  while (parsed.body.firstChild) {
+    fragment.appendChild(parsed.body.firstChild);
+  }
+
+  target.replaceChildren(fragment);
 }
 
 /**

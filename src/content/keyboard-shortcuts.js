@@ -5,6 +5,7 @@
 
 import browserCompat from '../shared/browser-compat.js';
 import { ENHANCEMENT_PRESETS, STORAGE_KEYS } from '../shared/constants.js';
+import { renderStaticHTML } from '../shared/utils.js';
 
 class KeyboardShortcuts {
   constructor(inlineUI, settings) {
@@ -177,7 +178,7 @@ class KeyboardShortcuts {
     const modal = document.createElement('div');
     modal.id = 'ape-quick-editor-modal';
     modal.className = 'ape-quick-editor-modal';
-    modal.innerHTML = `
+    renderStaticHTML(modal, `
       <div class="ape-quick-editor-content">
         <div class="ape-quick-editor-header">
           <h3>✏️ Custom Enhancement Instructions</h3>
@@ -206,7 +207,7 @@ class KeyboardShortcuts {
           </button>
         </div>
       </div>
-    `;
+    `);
 
     document.body.appendChild(modal);
     this.quickEditorOpen = true;

@@ -165,6 +165,15 @@
 
 /* Platform-specific adjustments can be added here if needed */
 
+.ape-perplexity-button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  aspect-ratio: 1 !important;
+  border-radius: 6px !important;
+  padding: 0 !important;
+}
+
 /* ===========================
    Responsive Design
    =========================== */

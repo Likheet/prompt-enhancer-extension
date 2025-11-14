@@ -525,7 +525,7 @@ class ResilientDOMObserver {
           if (selection && selection.rangeCount > 0) {
             selection.deleteFromDocument();
           } else {
-            focusTarget.innerHTML = '';
+            focusTarget.replaceChildren();
           }
         }
 
@@ -543,7 +543,7 @@ class ResilientDOMObserver {
         let inserted = execCommand('insertText', enhancedText);
 
         if (!inserted) {
-          focusTarget.innerHTML = '';
+          focusTarget.replaceChildren();
           const lines = enhancedText.split('\n');
           const fragment = document.createDocumentFragment();
 
@@ -589,15 +589,31 @@ class ResilientDOMObserver {
    */
   extractMessages() {
     const messages = [];
-    const messageElements = document.querySelectorAll(
+    
+    // First, try to scope to conversation area to avoid sidebar/UI elements
+    const conversationContainer = this.findElement(this.selectors.conversationArea);
+    const searchRoot = conversationContainer || document.body;
+
+    const messageElements = searchRoot.querySelectorAll(
       this.selectors.messageContainer.join(',')
     );
 
     messageElements.forEach((element) => {
+      // Skip if element is not in conversation area (e.g., sidebar)
+      if (!this.isInConversationArea(element)) {
+        return;
+      }
+
+      // Skip elements that are clearly UI/navigation (sidebars, headers, etc.)
+      if (this.isUIElement(element)) {
+        return;
+      }
+
       const isUser = this.isUserMessage(element);
       const content = this.cleanMessageContent(element.textContent || '');
 
-      if (content) {
+      // Validate message quality
+      if (content && this.isValidMessage(content)) {
         messages.push({
           role: isUser ? 'user' : 'assistant',
           content: content,
@@ -608,6 +624,106 @@ class ResilientDOMObserver {
     });
 
     return messages;
+  }
+
+  /**
+   * Check if element is in the main conversation area (not sidebar)
+   */
+  isInConversationArea(element) {
+    // Check if element is in sidebar or navigation
+    let current = element;
+    while (current && current !== document.body) {
+      const classList = current.className || '';
+      const role = current.getAttribute('role') || '';
+      
+      // Common sidebar/navigation indicators
+      if (
+        classList.includes('sidebar') ||
+        classList.includes('Sidebar') ||
+        classList.includes('navigation') ||
+        classList.includes('Navigation') ||
+        classList.includes('history') ||
+        classList.includes('History') ||
+        role === 'navigation' ||
+        role === 'complementary' ||
+        current.tagName === 'NAV' ||
+        current.tagName === 'ASIDE'
+      ) {
+        return false;
+      }
+      
+      current = current.parentElement;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Check if element is a UI component (not actual message)
+   */
+  isUIElement(element) {
+    const classList = element.className || '';
+    const text = (element.textContent || '').trim();
+    
+    // Skip elements that are buttons, links, or headers
+    if (
+      element.tagName === 'BUTTON' ||
+      element.tagName === 'A' ||
+      element.tagName === 'HEADER' ||
+      element.tagName === 'FOOTER' ||
+      element.tagName === 'NAV'
+    ) {
+      return true;
+    }
+
+    // Skip elements with very short text (likely UI labels)
+    if (text.length < 10) {
+      return true;
+    }
+
+    // Skip common UI patterns
+    const uiPatterns = [
+      'toolbar',
+      'menu',
+      'dropdown',
+      'tooltip',
+      'badge',
+      'chip',
+      'tab',
+      'header',
+      'footer'
+    ];
+
+    return uiPatterns.some(pattern => 
+      classList.toLowerCase().includes(pattern)
+    );
+  }
+
+  /**
+   * Validate if content is a real message
+   */
+  isValidMessage(content) {
+    // Must have minimum length
+    if (content.length < 10) {
+      return false;
+    }
+
+    // Must have some actual words (not just symbols/numbers)
+    const wordCount = content.split(/\s+/).filter(word => /[a-zA-Z]{2,}/.test(word)).length;
+    if (wordCount < 2) {
+      return false;
+    }
+
+    // Exclude common UI text patterns
+    const excludePatterns = [
+      /^(new chat|new thread|delete|edit|copy|share|export)$/i,
+      /^(today|yesterday|last week|this month)$/i,
+      /^\d+\s*(min|hour|day|week|month)s?\s*ago$/i,
+      /^[0-9\/\-:]+$/,  // Pure dates/times
+      /^[\d\s]+$/       // Pure numbers
+    ];
+
+    return !excludePatterns.some(pattern => pattern.test(content));
   }
 
   /**

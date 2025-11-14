@@ -5,6 +5,7 @@
 
 import browserCompat from '../shared/browser-compat.js';
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../shared/constants.js';
+import { renderStaticHTML } from '../shared/utils.js';
 
 class PopupController {
   constructor() {
@@ -592,7 +593,7 @@ class PopupController {
     countElem.textContent = this.managedSites.length;
 
     if (this.managedSites.length === 0) {
-      listElem.innerHTML = '<div class="managed-sites-empty">No managed sites yet</div>';
+      renderStaticHTML(listElem, '<div class="managed-sites-empty">No managed sites yet</div>');
       return;
     }
 
@@ -601,7 +602,7 @@ class PopupController {
       a.name.localeCompare(b.name)
     );
 
-    listElem.innerHTML = sortedSites.map(site => `
+    const managedSiteMarkup = sortedSites.map(site => `
       <div class="managed-site-item">
         <div class="managed-site-info">
           <div class="managed-site-details">
@@ -616,6 +617,8 @@ class PopupController {
         </button>
       </div>
     `).join('');
+
+    renderStaticHTML(listElem, managedSiteMarkup);
 
     // Add event listeners to remove buttons
     listElem.querySelectorAll('.btn-remove-site').forEach(btn => {
