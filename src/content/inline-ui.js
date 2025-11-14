@@ -416,9 +416,9 @@ class InlineUI {
 
     Object.assign(this.currentButton.style, {
       position: 'fixed',
-      left: '20px',
-      bottom: '100px',
-      right: 'auto',
+      left: 'auto',
+      bottom: '20px',
+      right: '20px',
       top: 'auto',
       zIndex: '9999'
     });
