@@ -98,12 +98,7 @@ class PromptEnhancer {
       };
     } catch (error) {
       console.error('[APE] Gemini API error:', error);
-      // Fallback to rule-based on API issues (e.g., quota exceeded)
-      try {
-        return this.ruleBasedEnhancement(context, settings);
-      } catch (fallbackError) {
-        throw new Error(ERROR_MESSAGES.API_ERROR);
-      }
+      throw new Error(ERROR_MESSAGES.API_ERROR);
     }
   }
 

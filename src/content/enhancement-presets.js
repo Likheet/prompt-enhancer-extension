@@ -145,7 +145,7 @@ Return ONLY the enhanced prompt without any explanation.`,
       return await this.enhanceWithAI(safeContext, preset, presetKey, customPrompt, apiKey, settings);
     }
 
-    return await this.enhanceWithRules(safeContext, preset);
+    throw new Error('API key is required for AI enhancement');
   }
 
   async enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings) {
@@ -195,7 +195,7 @@ Return ONLY the enhanced prompt without any explanation.`,
       return this.cleanEnhancedPrompt(enhanced, { templateType, presetKey });
     } catch (error) {
       console.error('[EnhancementPresets] Gemini API error:', error);
-      return await this.enhanceWithRules(context, preset);
+      throw error;
     }
   }
 

@@ -13,6 +13,17 @@ class ResilientDOMObserver {
     this.selectors = this.getPlatformSelectors();
     this.inputElement = null;
     this.sendButton = null;
+    this.missingInputWarned = false;
+  }
+
+  shouldSkipMount() {
+    if (this.platform === PLATFORMS.AI_STUDIO) {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/usage') || path.includes('/billing') || path.includes('/projects') || path.includes('/settings')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -396,7 +407,10 @@ class ResilientDOMObserver {
       }
     }
 
-    console.warn('[APE] Input element not found');
+    if (!this.missingInputWarned) {
+      console.warn('[APE] Input element not found');
+      this.missingInputWarned = true;
+    }
     this.inputElement = null;
     return null;
   }

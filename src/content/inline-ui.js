@@ -26,6 +26,7 @@ class InlineUI {
     this.composerObserver = null;
     this.cachedInputElement = null;
     this.currentStrategyKey = null;
+    this.missingInputWarned = false;
 
     this.init();
   }
@@ -120,7 +121,11 @@ class InlineUI {
    */
   async attachButtonToChatbox() {
     console.log('[APE InlineUI] Attempting to attach button...');
-    
+
+    if (typeof this.domObserver.shouldSkipMount === 'function' && this.domObserver.shouldSkipMount()) {
+      return;
+    }
+
     // Prevent multiple buttons - check both our reference AND the DOM
     if (this.currentButton && this.isButtonAttached()) {
       console.log('[APE InlineUI] Button already attached');
@@ -137,9 +142,10 @@ class InlineUI {
 
     const inputArea = await this.domObserver.findInputElement();
     if (!inputArea) {
-      console.warn('[APE InlineUI] Input area not found, will retry in 2s...');
-      console.log('[APE InlineUI] Platform:', this.domObserver.platform);
-      console.log('[APE InlineUI] Looking for selectors:', this.domObserver.selectors.inputArea);
+      if (!this.missingInputWarned) {
+        console.warn('[APE InlineUI] Input area not found, will retry in 2s...');
+        this.missingInputWarned = true;
+      }
       setTimeout(() => this.attachButtonToChatbox(), 2000);
       return;
     }
