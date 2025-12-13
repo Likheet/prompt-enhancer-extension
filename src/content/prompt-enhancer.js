@@ -43,7 +43,7 @@ class PromptEnhancer {
    * Rule-based enhancement (free tier)
    */
   ruleBasedEnhancement(context, settings = {}) {
-    const { currentPrompt, conversationHistory, metadata } = context;
+    const { currentPrompt, conversationHistory = [], metadata = {} } = context;
 
     if (!currentPrompt || currentPrompt.trim().length === 0) {
       throw new Error(ERROR_MESSAGES.NO_PROMPT);
@@ -76,7 +76,7 @@ class PromptEnhancer {
    * AI-powered enhancement with Gemini (BYOK tier)
    */
   async enhanceWithGemini(context, apiKey, settings = {}) {
-    const { currentPrompt, conversationHistory, metadata } = context;
+    const { currentPrompt, conversationHistory = [], metadata = {} } = context;
 
     if (!currentPrompt || currentPrompt.trim().length === 0) {
       throw new Error(ERROR_MESSAGES.NO_PROMPT);
@@ -98,7 +98,12 @@ class PromptEnhancer {
       };
     } catch (error) {
       console.error('[APE] Gemini API error:', error);
-      throw new Error(ERROR_MESSAGES.API_ERROR);
+      // Fallback to rule-based on API issues (e.g., quota exceeded)
+      try {
+        return this.ruleBasedEnhancement(context, settings);
+      } catch (fallbackError) {
+        throw new Error(ERROR_MESSAGES.API_ERROR);
+      }
     }
   }
 
@@ -106,7 +111,7 @@ class PromptEnhancer {
    * Call Gemini API
    */
   async callGeminiAPI(prompt, apiKey) {
-    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
+    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_API.TIMEOUT);
@@ -115,8 +120,7 @@ class PromptEnhancer {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           contents: [{
@@ -180,13 +184,13 @@ class PromptEnhancer {
    * Select enhancement strategy
    */
   selectStrategy(metadata, context) {
-    const { intent, hasCode, complexity } = metadata;
-    const { conversationHistory } = context;
+    const { intent, hasCode, complexity } = metadata || {};
+    const { conversationHistory = [] } = context || {};
 
     if (hasCode) return 'technical';
     if (intent === 'creative') return 'creative';
     if (conversationHistory.length > 5) return 'contextual';
-    if (complexity < 0.3) return 'clarification';
+    if (typeof complexity === 'number' && complexity < 0.3) return 'clarification';
     if (intent === 'question') return 'structured';
 
     return 'general';

@@ -1,0 +1,226 @@
+/**
+ * Prompt Enhancer Button Styles
+ * Clean, minimal styling that blends with host pages
+ */
+
+/* Button base styles */
+.prompt-enhancer-button {
+  /* Layout */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  /* Sizing (can be overridden by placement config) */
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  margin: 0;
+
+  /* Appearance */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  cursor: pointer;
+
+  /* Font */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1;
+
+  /* Effects */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
+
+  /* Ensure button is above other elements */
+  z-index: 1000;
+
+  /* Remove default button styles */
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Hover state */
+.prompt-enhancer-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+/* Active/pressed state */
+.prompt-enhancer-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Focus state (for keyboard navigation) */
+.prompt-enhancer-button:focus {
+  outline: 2px solid #4A90E2;
+  outline-offset: 2px;
+}
+
+/* Disabled state */
+.prompt-enhancer-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading state */
+.prompt-enhancer-button.pe-loading {
+  cursor: wait;
+}
+
+/* Icon styles */
+.prompt-enhancer-button .pe-icon {
+  display: inline-block;
+  transition: opacity 0.2s ease;
+}
+
+/* Spinner styles */
+.prompt-enhancer-button .pe-spinner {
+  display: inline-block;
+  transition: opacity 0.2s ease;
+}
+
+/* Hidden state for icon/spinner toggle */
+.pe-hidden {
+  display: none !important;
+  opacity: 0;
+}
+
+/* Dark mode support (automatically adapts to dark backgrounds) */
+@media (prefers-color-scheme: dark) {
+  .prompt-enhancer-button {
+    background: rgba(40, 40, 40, 0.9);
+    color: #e0e0e0;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .prompt-enhancer-button:hover:not(:disabled) {
+    background: rgba(50, 50, 50, 1);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Tooltip styles */
+.pe-tooltip {
+  position: fixed;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 10001;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Tooltip show state */
+.pe-tooltip.pe-tooltip-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Tooltip variants */
+.pe-tooltip.pe-tooltip-success {
+  background: rgba(34, 139, 34, 0.9);
+}
+
+.pe-tooltip.pe-tooltip-error {
+  background: rgba(220, 38, 38, 0.9);
+}
+
+.pe-tooltip.pe-tooltip-warning {
+  background: rgba(234, 179, 8, 0.9);
+  color: #1f1f1f;
+}
+
+.pe-tooltip.pe-tooltip-info {
+  background: rgba(37, 99, 235, 0.9);
+}
+
+/* Animation for spinner */
+@keyframes pe-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pe-spinner svg {
+  animation: pe-spin 1s linear infinite;
+}
+
+/* Ensure button works well in different contexts */
+
+/* When button is in a toolbar */
+.prompt-enhancer-button[data-placement="toolbar"] {
+  margin: 0 4px;
+}
+
+/* When button is absolutely positioned inside an input */
+.prompt-enhancer-button[data-placement="inside"] {
+  position: absolute;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .prompt-enhancer-button {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .prompt-enhancer-button {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .prompt-enhancer-button,
+  .pe-tooltip,
+  .pe-icon,
+  .pe-spinner {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Print: hide the button */
+@media print {
+  .prompt-enhancer-button {
+    display: none !important;
+  }
+}
+
+/* Override any conflicting styles from host pages */
+.prompt-enhancer-button * {
+  box-sizing: border-box;
+}
+
+/* Ensure button text/icons are not selectable */
+.prompt-enhancer-button {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}

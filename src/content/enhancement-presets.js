@@ -129,6 +129,11 @@ Return ONLY the enhanced prompt without any explanation.`,
 
   async enhanceWithPreset(context, presetKey, customPrompt = null) {
     const preset = this.getPreset(presetKey);
+    const safeContext = {
+      conversationHistory: [],
+      metadata: {},
+      ...context
+    };
     const settings = await this.getSettings();
     const subscription = await this.getSubscription();
 
@@ -137,10 +142,10 @@ Return ONLY the enhanced prompt without any explanation.`,
       || (TEST_MODE_ENABLED ? HARDCODED_API_KEY : null);
 
     if (apiKey) {
-      return await this.enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings);
+      return await this.enhanceWithAI(safeContext, preset, presetKey, customPrompt, apiKey, settings);
     }
 
-    return await this.enhanceWithRules(context, preset);
+    return await this.enhanceWithRules(safeContext, preset);
   }
 
   async enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings) {
@@ -157,12 +162,11 @@ Return ONLY the enhanced prompt without any explanation.`,
 
     try {
       const response = await fetch(
-        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`,
+        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             contents: [{
@@ -179,6 +183,9 @@ Return ONLY the enhanced prompt without any explanation.`,
       );
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(ERROR_MESSAGES.RATE_LIMIT);
+        }
         throw new Error(`${ERROR_MESSAGES.API_ERROR} (status ${response.status})`);
       }
 

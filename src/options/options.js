@@ -490,7 +490,7 @@ class OptionsPage {
   async validateGeminiKey(apiKey) {
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: {
@@ -504,7 +504,7 @@ class OptionsPage {
         }
       );
 
-      return response.ok;
+      return response.ok || response.status === 429;
     } catch (error) {
       console.error('[Options] API key validation error:', error);
       return false;

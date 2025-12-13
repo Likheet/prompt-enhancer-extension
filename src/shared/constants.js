@@ -137,8 +137,8 @@ Now enhance this prompt (output ONLY the structured format above, nothing else):
 };
 
 export const GEMINI_API = {
-  BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-  MODEL: 'gemini-2.0-flash',  // Updated from gemini-1.5-flash (deprecated)
+  BASE_URL: 'https://generativelanguage.googleapis.com/v1',
+  MODEL: 'gemini-2.5-flash-lite',
   MAX_RETRIES: 3,
   TIMEOUT: 10000
 };

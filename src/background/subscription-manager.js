@@ -134,7 +134,7 @@ class SubscriptionManager {
       return true;
     }
 
-    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
+    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`;
 
     console.log('[APE] Validating API key with model:', GEMINI_API.MODEL);
     if (VERBOSE_LOGGING) {
@@ -145,8 +145,7 @@ class SubscriptionManager {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           contents: [{

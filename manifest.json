@@ -11,10 +11,6 @@
   ],
 
   "host_permissions": [
-    "<all_urls>"
-  ],
-
-  "optional_host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",
