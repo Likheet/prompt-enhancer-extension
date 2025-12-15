@@ -215,7 +215,7 @@ Return ONLY the enhanced prompt without any explanation.`,
     // For legacy templates that use {{PROMPT}}
     if (template.includes('{{PROMPT}}')) {
       let request = template.replace(/{{PROMPT}}/g, userInput);
-      
+
       if (systemPrompt) {
         request = `${systemPrompt.trim()}\n\n${request}`;
       }
@@ -261,14 +261,23 @@ Return ONLY the enhanced prompt without any explanation.`,
     // Intelligent context inclusion
     const conversationHistory = context.conversationHistory || [];
     const needsContext = this.contextIsRelevant(userInput, conversationHistory);
-    
-    if (needsContext && conversationHistory.length > 0) {
-      const recentMessages = conversationHistory.slice(-3);
+
+    // DEBUG: Log context extraction results
+    console.log('[APE EnhancementPresets] Context check:', {
+      userInput: userInput.substring(0, 50),
+      historyLength: conversationHistory.length,
+      needsContext,
+      history: conversationHistory.slice(-2).map(m => ({ role: m.role, content: m.content.substring(0, 50) }))
+    });
+
+    if (conversationHistory.length > 0) {
+      // Always include context if available - AI will determine relevance
+      const recentMessages = conversationHistory.slice(-5);  // Increased from 3 to 5
       const contextSummary = recentMessages
-        .map((msg, idx) => `${idx + 1}. [${msg.role}]: ${msg.content.substring(0, 200)}`)
+        .map((msg, idx) => `${idx + 1}. [${msg.role}]: ${msg.content.substring(0, 300)}`)  // Increased from 200 to 300
         .join('\n');
-      
-      const conversationContext = `CONVERSATION HISTORY:\n${contextSummary}\n`;
+
+      const conversationContext = `CONVERSATION HISTORY (Use this to understand references like "it", "this", "that"):\n${contextSummary}\n`;
       request = request.replace(/\$\{conversationContext\}/g, conversationContext);
     } else {
       // Remove the conversation context placeholder
@@ -360,10 +369,10 @@ Return ONLY the enhanced prompt without any explanation.`,
     // Fix bullet points - only match at start of words after whitespace, not hyphens in words
     // Match: "  - item" or "\n- item" but not "non-specific"
     formatted = formatted.replace(/(\n|\s{2,})-\s+/g, '\n- ');
-    
+
     // Remove multiple consecutive newlines
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
-    
+
     // Remove trailing whitespace from lines
     formatted = formatted.replace(/[ \t]+\n/g, '\n');
     formatted = formatted.replace(/[ \t]+$/gm, '');

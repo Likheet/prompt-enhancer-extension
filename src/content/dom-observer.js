@@ -80,16 +80,20 @@ class ResilientDOMObserver {
           'form button[type="submit"]'
         ],
         messageContainer: [
+          'div.user-message-bubble-color',
+          'div[class*="agent-turn"]',
           'div[data-message-author-role]',
           'div[data-testid^="conversation-turn"]',
           '.group.w-full',
           'div.text-base'
         ],
         userMessage: [
+          'div.user-message-bubble-color',
           'div[data-message-author-role="user"]',
           'div[data-testid="user-message"]'
         ],
         assistantMessage: [
+          'div[class*="agent-turn"]',
           'div[data-message-author-role="assistant"]',
           'div[data-testid="assistant-message"]'
         ],
@@ -120,27 +124,23 @@ class ResilientDOMObserver {
           'button[aria-label*="Send message"]'
         ],
         messageContainer: [
-          'div[data-is-user]',
-          'div.font-user-message',
-          'div.font-claude-message',
-          'div[data-testid*="message"]'
+          'div[data-testid="user-message"]',
+          'div.font-claude-response',
+          'div.bg-bg-300.rounded-xl',
+          'div[data-is-streaming]'
         ],
         userMessage: [
-          'div[data-is-user="true"]',
-          'div.font-user-message',
-          'div[data-testid*="message-user"]'
+          'div[data-testid="user-message"]',
+          'div.bg-bg-300.rounded-xl'
         ],
         assistantMessage: [
-          'div[data-is-user="false"]',
-          'div.font-claude-message',
-          'div[data-testid*="message-system"]',
-          'div[data-testid*="message-assistant"]'
+          'div.font-claude-response',
+          'div[data-is-streaming]'
         ],
         conversationArea: [
+          'div.flex-1.flex.flex-col.px-4.max-w-3xl',
           'main',
-          'div[class*="ConversationContainer"]',
-          'div[data-testid*="conversation"]',
-          'div[data-testid*="chat-root"]'
+          'div[data-testid*="conversation"]'
         ]
       },
 
@@ -159,24 +159,24 @@ class ResilientDOMObserver {
           'button[type="submit"]'
         ],
         messageContainer: [
+          'user-query-content',
           'message-content',
-          'model-response',
-          'user-query',
-          'div[class*="message"]'
+          'div.conversation-container'
         ],
         userMessage: [
-          'user-query',
-          'div[class*="user"]'
+          'user-query-content',
+          'div.query-text',
+          'user-query'
         ],
         assistantMessage: [
-          'model-response',
-          'div[class*="model"]',
-          'div[class*="assistant"]'
+          'message-content',
+          'div.markdown.markdown-main-panel',
+          'model-response'
         ],
         conversationArea: [
-          'main',
-          'div[class*="conversation"]',
-          'mat-sidenav-content'
+          'infinite-scroller.chat-history',
+          'div.conversation-container',
+          'main'
         ]
       },
 
@@ -252,22 +252,40 @@ class ResilientDOMObserver {
         inputArea: [
           'textarea',
           '[contenteditable="true"]',
-          'input[type="text"]'
+          'input[type="text"]',
+          '[role="textbox"]'
         ],
         sendButton: [
           'button[type="submit"]',
           'button:has(svg)',
-          'input[type="submit"]'
+          'input[type="submit"]',
+          'button[aria-label*="Send"]'
         ],
         messageContainer: [
           'div[class*="message"]',
-          'div[class*="Message"]'
+          'div[class*="Message"]',
+          'div[class*="chat-bubble"]',
+          'div[class*="bubble"]',
+          'li[class*="message"]'
         ],
-        userMessage: [],
-        assistantMessage: [],
+        userMessage: [
+          'div[class*="user"]',
+          'div[class*="User"]',
+          'div[class*="self"]',
+          'div[class*="outgoing"]'
+        ],
+        assistantMessage: [
+          'div[class*="assistant"]',
+          'div[class*="bot"]',
+          'div[class*="ai"]',
+          'div[class*="model"]',
+          'div[class*="incoming"]'
+        ],
         conversationArea: [
           'main',
           '[role="main"]',
+          '.chat-container',
+          '#chat-history',
           'body'
         ]
       }
@@ -387,8 +405,8 @@ class ResilientDOMObserver {
     }
 
     if (this.inputElement &&
-        this.validateElement(this.inputElement) &&
-        this.matchesAnySelector(this.inputElement, this.selectors.inputArea)) {
+      this.validateElement(this.inputElement) &&
+      this.matchesAnySelector(this.inputElement, this.selectors.inputArea)) {
       return this.inputElement;
     }
 
@@ -603,23 +621,39 @@ class ResilientDOMObserver {
    */
   extractMessages() {
     const messages = [];
-    
+
     // First, try to scope to conversation area to avoid sidebar/UI elements
     const conversationContainer = this.findElement(this.selectors.conversationArea);
-    const searchRoot = conversationContainer || document.body;
+    let searchRoot = conversationContainer || document.body;
 
-    const messageElements = searchRoot.querySelectorAll(
-      this.selectors.messageContainer.join(',')
-    );
+    const selectorString = this.selectors.messageContainer.join(',');
+    console.log('[APE DOM Debug]', {
+      platform: this.platform,
+      selectorString,
+      conversationFound: !!conversationContainer,
+      searchRootTag: searchRoot?.tagName
+    });
 
-    messageElements.forEach((element) => {
+    let messageElements = searchRoot.querySelectorAll(selectorString);
+    console.log('[APE DOM Debug] Messages found:', messageElements.length);
+
+    // Fallback: if no messages found in scoped area, try document.body
+    if (messageElements.length === 0 && searchRoot !== document.body) {
+      searchRoot = document.body;
+      messageElements = document.body.querySelectorAll(selectorString);
+      console.log('[APE DOM Debug] Fallback messages found:', messageElements.length);
+    }
+
+    messageElements.forEach((element, idx) => {
       // Skip if element is not in conversation area (e.g., sidebar)
       if (!this.isInConversationArea(element)) {
+        console.log(`[APE DOM Debug] Message ${idx} REJECTED: not in conversation area`, element.tagName);
         return;
       }
 
       // Skip elements that are clearly UI/navigation (sidebars, headers, etc.)
       if (this.isUIElement(element)) {
+        console.log(`[APE DOM Debug] Message ${idx} REJECTED: isUIElement`, element.tagName);
         return;
       }
 
@@ -628,15 +662,19 @@ class ResilientDOMObserver {
 
       // Validate message quality
       if (content && this.isValidMessage(content)) {
+        console.log(`[APE DOM Debug] Message ${idx} ACCEPTED:`, { tag: element.tagName, role: isUser ? 'user' : 'assistant', len: content.length });
         messages.push({
           role: isUser ? 'user' : 'assistant',
           content: content,
           element: element,
           timestamp: this.extractTimestamp(element)
         });
+      } else {
+        console.log(`[APE DOM Debug] Message ${idx} REJECTED: invalid content`, { tag: element.tagName, contentLen: content?.length });
       }
     });
 
+    console.log('[APE DOM Debug] Final messages array length:', messages.length);
     return messages;
   }
 
@@ -649,26 +687,27 @@ class ResilientDOMObserver {
     while (current && current !== document.body) {
       const classList = current.className || '';
       const role = current.getAttribute('role') || '';
-      
+
       // Common sidebar/navigation indicators
       if (
         classList.includes('sidebar') ||
         classList.includes('Sidebar') ||
         classList.includes('navigation') ||
         classList.includes('Navigation') ||
-        classList.includes('history') ||
-        classList.includes('History') ||
+        // classList.includes('history') || // Removed: Gemini uses 'chat-history' for the MAIN container
+        // classList.includes('History') ||
         role === 'navigation' ||
         role === 'complementary' ||
         current.tagName === 'NAV' ||
         current.tagName === 'ASIDE'
       ) {
+        if (this.debug) console.log('[APE DOM Debug] Rejected by sidebar check:', current.tagName, classList);
         return false;
       }
-      
+
       current = current.parentElement;
     }
-    
+
     return true;
   }
 
@@ -678,7 +717,7 @@ class ResilientDOMObserver {
   isUIElement(element) {
     const classList = element.className || '';
     const text = (element.textContent || '').trim();
-    
+
     // Skip elements that are buttons, links, or headers
     if (
       element.tagName === 'BUTTON' ||
@@ -708,7 +747,7 @@ class ResilientDOMObserver {
       'footer'
     ];
 
-    return uiPatterns.some(pattern => 
+    return uiPatterns.some(pattern =>
       classList.toLowerCase().includes(pattern)
     );
   }
@@ -718,13 +757,15 @@ class ResilientDOMObserver {
    */
   isValidMessage(content) {
     // Must have minimum length
-    if (content.length < 10) {
+    if (content.length < 3) { // Lowered from 10 to 3 for short queries
+      if (this.debug) console.log('[APE DOM Debug] Failed length check:', content.length);
       return false;
     }
 
     // Must have some actual words (not just symbols/numbers)
     const wordCount = content.split(/\s+/).filter(word => /[a-zA-Z]{2,}/.test(word)).length;
-    if (wordCount < 2) {
+    if (wordCount < 1) { // Lowered from 2 to 1 (e.g. "Why?")
+      if (this.debug) console.log('[APE DOM Debug] Failed word count check:', wordCount);
       return false;
     }
 
@@ -737,7 +778,9 @@ class ResilientDOMObserver {
       /^[\d\s]+$/       // Pure numbers
     ];
 
-    return !excludePatterns.some(pattern => pattern.test(content));
+    const isExcluded = excludePatterns.some(pattern => pattern.test(content));
+    if (isExcluded && this.debug) console.log('[APE DOM Debug] Failed exclude pattern');
+    return !isExcluded;
   }
 
   /**
@@ -797,8 +840,8 @@ class ResilientDOMObserver {
     this.observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'childList' ||
-            mutation.type === 'characterData' ||
-            mutation.type === 'attributes') {
+          mutation.type === 'characterData' ||
+          mutation.type === 'attributes') {
           throttledCallback(mutation);
         }
       }
@@ -841,8 +884,8 @@ class ResilientDOMObserver {
     if (!this.sendButton) return false;
 
     return !this.sendButton.disabled &&
-           !this.sendButton.hasAttribute('disabled') &&
-           this.sendButton.offsetParent !== null;
+      !this.sendButton.hasAttribute('disabled') &&
+      this.sendButton.offsetParent !== null;
   }
 }
 

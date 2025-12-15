@@ -154,11 +154,27 @@ class PromptEnhancer {
     }
   }
 
+
+
+  /**
+   * Format conversation history for context
+   */
+  formatConversationHistory(history) {
+    if (!history || history.length === 0) return '';
+
+    return history.map(msg => {
+      const role = msg.role === 'user' ? 'User' : 'Assistant';
+      // Truncate very long messages to save tokens
+      const content = msg.content.length > 500 ? msg.content.substring(0, 500) + '...' : msg.content;
+      return `${role}: ${content}`;
+    }).join('\n\n');
+  }
+
   /**
    * Build prompt for Gemini API
    */
   buildGeminiPrompt(context, settings = {}) {
-    const { currentPrompt } = context;
+    const { currentPrompt, conversationHistory = [] } = context;
     const templateType = settings.promptTemplateType || 'standard';
 
     let template;
@@ -172,7 +188,21 @@ class PromptEnhancer {
       template = `${template}\n\n{{PROMPT}}`;
     }
 
-    return template.replace(/{{PROMPT}}/g, currentPrompt);
+    // Format and inject conversation history
+    const historyText = this.formatConversationHistory(conversationHistory);
+    let finalPrompt = template.replace(/{{PROMPT}}/g, currentPrompt);
+
+    if (historyText) {
+      finalPrompt = finalPrompt.replace('${conversationContext}', `
+CONVERSATION HISTORY (Use this for context if relevant):
+${historyText}
+      `.trim());
+    } else {
+      // Remove the placeholder if no history
+      finalPrompt = finalPrompt.replace('${conversationContext}', '');
+    }
+
+    return finalPrompt;
   }
 
   /**
@@ -181,6 +211,10 @@ class PromptEnhancer {
   selectStrategy(metadata, context) {
     const { intent, hasCode, complexity } = metadata || {};
     const { conversationHistory = [] } = context || {};
+
+    // Check for anaphora (pronouns referencing previous context)
+    const hasAnaphora = /\b(it|this|that|he|she|they|them|him|her)\b/i.test(context.currentPrompt || '');
+    if (hasAnaphora && conversationHistory.length > 0) return 'contextual';
 
     if (hasCode) return 'technical';
     if (intent === 'creative') return 'creative';
@@ -204,17 +238,19 @@ class PromptEnhancer {
 
     // Remove vague words and replace with specific requests
     const vaguePatterns = [
-      { pattern: /\b(help|fix|do|make|improve|check)\b/gi, replacement: (match) => {
-        const replacements = {
-          'help': 'assist me with',
-          'fix': 'debug and fix',
-          'do': 'help me',
-          'make': 'create',
-          'improve': 'enhance and optimize',
-          'check': 'review and validate'
-        };
-        return replacements[match.toLowerCase()] || match;
-      }}
+      {
+        pattern: /\b(help|fix|do|make|improve|check)\b/gi, replacement: (match) => {
+          const replacements = {
+            'help': 'assist me with',
+            'fix': 'debug and fix',
+            'do': 'help me',
+            'make': 'create',
+            'improve': 'enhance and optimize',
+            'check': 'review and validate'
+          };
+          return replacements[match.toLowerCase()] || match;
+        }
+      }
     ];
 
     vaguePatterns.forEach(({ pattern, replacement }) => {
@@ -389,7 +425,18 @@ class PromptEnhancer {
    * Find relevant context messages
    */
   findRelevantContext(prompt, history) {
-    const keywords = prompt.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    const normalizedPrompt = prompt.toLowerCase();
+    const keywords = normalizedPrompt.split(/\W+/).filter(w => w.length > 3);
+
+    // Check for pronouns/anaphora markers
+    const hasAnaphora = /\b(it|this|that|he|she|they|them|him|her)\b/i.test(normalizedPrompt);
+
+    // If prompt is short and uses pronouns, assume immediate context relevance
+    if (hasAnaphora && prompt.length < 50 && history.length > 0) {
+      // Return last 2 messages (likely user query + assistant response)
+      return history.slice(-2);
+    }
+
     const relevant = [];
 
     history.forEach(msg => {
@@ -401,7 +448,7 @@ class PromptEnhancer {
       }
     });
 
-    return relevant.slice(-3);
+    return relevant.length > 0 ? relevant.slice(-3) : (hasAnaphora && history.length > 0 ? history.slice(-1) : []);
   }
 
   /**
