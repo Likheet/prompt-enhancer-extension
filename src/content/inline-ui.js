@@ -3,7 +3,7 @@
  * Provides inline button beside chatbox for prompt enhancement
  */
 
-import { UI_CONSTANTS, SUCCESS_MESSAGES, ERROR_MESSAGES, STORAGE_KEYS } from '../shared/constants.js';
+import { STORAGE_KEYS } from '../shared/constants.js';
 import { copyToClipboard, generateId, renderStaticHTML } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import DOCKING_STRATEGIES from './docking-strategies.js';
@@ -23,10 +23,15 @@ class InlineUI {
     this.presets = new EnhancementPresets();
     this.extensionInvalidatedNotified = false;
     this.currentDockingTarget = null;
-    this.composerObserver = null;
+    this.pageObserver = null;
+    this.dockingObserver = null;
+    this.reattachTimeout = null;
+    this.retryTimeout = null;
     this.cachedInputElement = null;
     this.currentStrategyKey = null;
     this.missingInputWarned = false;
+    this.attachPromise = null;
+    this.destroyed = false;
 
     this.init();
   }
@@ -37,50 +42,36 @@ class InlineUI {
   async init() {
     console.log('[APE InlineUI] Initializing...');
 
-    // Wait for page to stabilize
-    await this.waitForStability();
-
-    // Create and attach button
-    this.attachButtonToChatbox();
-
     // Monitor for chatbox changes (SPA navigation, etc.)
     this.observeChatbox();
 
-    console.log('[APE InlineUI] Initialized');
-  }
+    // Try immediately. The observer and bounded retry handle late hydration.
+    await this.attachButtonToChatbox();
 
-  /**
-   * Wait for page to be stable before injecting
-   */
-  async waitForStability() {
-    return new Promise((resolve) => {
-      setTimeout(resolve, 1500);
-    });
+    console.log('[APE InlineUI] Initialized');
   }
 
   /**
    * Monitor for chatbox appearance/disappearance
    */
   observeChatbox() {
-    // Store observer reference for cleanup
-    let reattachTimeout = null;
-    
-    this.composerObserver = new MutationObserver(() => {
+    if (this.pageObserver) {
+      this.pageObserver.disconnect();
+    }
+
+    this.pageObserver = new MutationObserver(() => {
       // Debounce the reattachment check
-      if (reattachTimeout) {
-        clearTimeout(reattachTimeout);
+      if (this.reattachTimeout) {
+        clearTimeout(this.reattachTimeout);
       }
-      
-      reattachTimeout = setTimeout(() => {
-        // Check if button is still attached and valid
-        if (!this.isButtonAttached()) {
-          console.log('[APE InlineUI] Button detached, reattaching...');
-          this.attachButtonToChatbox();
-        }
-      }, 500); // Wait 500ms before checking
+
+      this.reattachTimeout = setTimeout(() => {
+        // Re-resolve even while connected: native toolbars often hydrate later.
+        this.attachButtonToChatbox();
+      }, 250);
     });
 
-    this.composerObserver.observe(document.body, {
+    this.pageObserver.observe(document.body, {
       childList: true,
       subtree: true
     });
@@ -91,19 +82,27 @@ class InlineUI {
    */
   destroy() {
     console.log('[APE InlineUI] Cleaning up...');
-    
-    // Disconnect mutation observer
-    if (this.composerObserver) {
-      this.composerObserver.disconnect();
-      this.composerObserver = null;
+    this.destroyed = true;
+
+    if (this.pageObserver) {
+      this.pageObserver.disconnect();
+      this.pageObserver = null;
     }
-    
+
+    this.clearDockingObserver();
+    clearTimeout(this.reattachTimeout);
+    clearTimeout(this.retryTimeout);
+    this.reattachTimeout = null;
+    this.retryTimeout = null;
+
     // Remove button from DOM
     if (this.currentButton) {
+      const ownedWrapper = this.currentButton.closest('[data-ape-button-wrapper="true"]');
       this.currentButton.remove();
+      if (ownedWrapper && !ownedWrapper.childElementCount) ownedWrapper.remove();
       this.currentButton = null;
     }
-    
+
     // Clear cached elements
     this.cachedInputElement = null;
   }
@@ -119,42 +118,58 @@ class InlineUI {
   /**
    * Attach button to chatbox
    */
-  async attachButtonToChatbox() {
+  attachButtonToChatbox() {
+    if (this.destroyed) return Promise.resolve(false);
+    if (this.attachPromise) return this.attachPromise;
+
+    this.attachPromise = this.performAttachButtonToChatbox()
+      .finally(() => {
+        this.attachPromise = null;
+      });
+    return this.attachPromise;
+  }
+
+  async performAttachButtonToChatbox() {
     console.log('[APE InlineUI] Attempting to attach button...');
 
     if (typeof this.domObserver.shouldSkipMount === 'function' && this.domObserver.shouldSkipMount()) {
       return;
     }
 
-    // Prevent multiple buttons - check both our reference AND the DOM
-    if (this.currentButton && this.isButtonAttached()) {
-      console.log('[APE InlineUI] Button already attached');
-      return;
-    }
-
-    // Also check if a button with our ID already exists in the DOM
     const existingButton = document.getElementById(this.buttonId);
-    if (existingButton) {
+    if (!this.currentButton && existingButton) {
       console.log('[APE InlineUI] Button already exists in DOM, reusing...');
       this.currentButton = existingButton;
-      return;
     }
 
     const inputArea = await this.domObserver.findInputElement();
     if (!inputArea) {
+      // Exponential Backoff Retry Logic
+      const attempt = (this.retryAttempt || 0) + 1;
+      this.retryAttempt = attempt;
+
+      const delay = Math.min(1000 * Math.pow(1.5, attempt), 10000); // Cap at 10s
+
       if (!this.missingInputWarned) {
-        console.warn('[APE InlineUI] Input area not found, will retry in 2s...');
-        this.missingInputWarned = true;
+        console.warn(`[APE InlineUI] Input area not found (Attempt ${attempt}), retrying in ${delay}ms...`);
+        if (attempt > 3) this.missingInputWarned = true;
       }
-      setTimeout(() => this.attachButtonToChatbox(), 2000);
+
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = setTimeout(() => this.attachButtonToChatbox(), delay);
       return;
     }
+
+    // Reset retry counter on success
+    this.retryAttempt = 0;
+    this.missingInputWarned = false;
 
     console.log('[APE InlineUI] Input area found:', inputArea.tagName, inputArea.className);
     this.cachedInputElement = inputArea;
 
-    // Create button
-    this.currentButton = this.createEnhanceButton();
+    if (!this.currentButton) {
+      this.currentButton = this.createEnhanceButton();
+    }
 
     // Attempt to dock the button using platform-specific strategy
     const docked = this.dockButton(inputArea);
@@ -180,12 +195,12 @@ class InlineUI {
     button.setAttribute('aria-label', 'Enhance Prompt (Alt+E)');
     button.title = 'Enhance Prompt (Alt+E)';
 
-    const iconUrl = chrome?.runtime?.getURL('assets/icons/icon-48.png') || 
-                    browser?.runtime?.getURL('assets/icons/icon-48.png');
-
     renderStaticHTML(button, `
-      <img class="ape-icon-enhance" src="${iconUrl}" alt="Enhance" style="width: 100%; height: 100%; display: block; object-fit: contain;">
-      <svg class="ape-spinner-inline ape-hidden" width="100%" height="100%" viewBox="0 0 24 24">
+      <svg class="ape-icon-enhance" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2.75c.38 4.91 2.34 6.87 7.25 7.25-4.91.38-6.87 2.34-7.25 7.25-.38-4.91-2.34-6.87-7.25-7.25C9.66 9.62 11.62 7.66 12 2.75Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M18.75 15.5c.15 1.94.81 2.6 2.75 2.75-1.94.15-2.6.81-2.75 2.75-.15-1.94-.81-2.6-2.75-2.75 1.94-.15 2.6-.81 2.75-2.75Z" fill="currentColor"/>
+      </svg>
+      <svg class="ape-spinner-inline ape-hidden" aria-hidden="true" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"
                 fill="none" stroke-dasharray="40" stroke-dashoffset="10"/>
       </svg>
@@ -319,9 +334,18 @@ class InlineUI {
     if (!this.currentButton) return false;
 
     const platform = this.domObserver.platform;
-    const strategy = DOCKING_STRATEGIES[platform] || DOCKING_STRATEGIES.generic;
+    const placement = this.settings?.sitePlacement || 'auto';
+    let strategyKey = placement === 'auto' && DOCKING_STRATEGIES[platform]
+      ? platform
+      : 'generic';
+    let strategy = DOCKING_STRATEGIES[strategyKey] || DOCKING_STRATEGIES.generic;
+    let anchor = strategy.findAnchor(inputElement, { placement });
 
-    const anchor = strategy.findAnchor(inputElement);
+    if ((!anchor || !anchor.container) && strategyKey !== 'generic') {
+      strategyKey = 'generic';
+      strategy = DOCKING_STRATEGIES.generic;
+      anchor = strategy.findAnchor(inputElement, { placement });
+    }
 
     if (!anchor || !anchor.container) {
       this.clearDockingObserver();
@@ -329,26 +353,28 @@ class InlineUI {
     }
 
     this.resetButtonStyles();
-    strategy.applyStyles(this.currentButton, anchor.container);
+    strategy.applyStyles(this.currentButton, anchor.container, anchor);
 
     // Handle button insertion with optional wrapper (for Perplexity, AI Studio)
+    const previousOwnedWrapper = this.currentButton.closest('[data-ape-button-wrapper="true"]');
     let elementToInsert = this.currentButton;
     if (anchor.needsWrapper) {
       const wrapperTag = anchor.wrapperTag || 'span';
       const wrapperClass = anchor.wrapperClass || '';
       const expectedTag = wrapperTag.toUpperCase();
-      
+
       // Check if button is already wrapped correctly
       const parent = this.currentButton.parentElement;
-      const isCorrectlyWrapped = parent && 
-                                 parent.tagName === expectedTag && 
-                                 (!wrapperClass || parent.classList.contains(wrapperClass));
-      
+      const isCorrectlyWrapped = parent &&
+        parent.tagName === expectedTag &&
+        (!wrapperClass || parent.classList.contains(wrapperClass));
+
       if (!isCorrectlyWrapped) {
         const wrapper = document.createElement(wrapperTag);
         if (wrapperClass) {
           wrapper.className = wrapperClass;
         }
+        wrapper.dataset.apeButtonWrapper = 'true';
         wrapper.appendChild(this.currentButton);
         elementToInsert = wrapper;
       } else {
@@ -356,34 +382,48 @@ class InlineUI {
       }
     }
 
-    if (anchor.position === 'before' && anchor.referenceNode) {
-      anchor.container.insertBefore(elementToInsert, anchor.referenceNode);
-    } else if (anchor.position === 'after' && anchor.referenceNode) {
-      anchor.container.insertBefore(elementToInsert, anchor.referenceNode.nextSibling);
-    } else {
-      anchor.container.appendChild(elementToInsert);
+    const alreadyPlaced = anchor.position === 'before' && anchor.referenceNode
+      ? elementToInsert.parentElement === anchor.container && elementToInsert.nextSibling === anchor.referenceNode
+      : anchor.position === 'after' && anchor.referenceNode
+        ? elementToInsert.parentElement === anchor.container && anchor.referenceNode.nextSibling === elementToInsert
+        : elementToInsert.parentElement === anchor.container && elementToInsert === anchor.container.lastElementChild;
+
+    if (!alreadyPlaced) {
+      if (anchor.position === 'before' && anchor.referenceNode) {
+        anchor.container.insertBefore(elementToInsert, anchor.referenceNode);
+      } else if (anchor.position === 'after' && anchor.referenceNode) {
+        anchor.container.insertBefore(elementToInsert, anchor.referenceNode.nextSibling);
+      } else {
+        anchor.container.appendChild(elementToInsert);
+      }
+    }
+
+    if (previousOwnedWrapper && previousOwnedWrapper !== elementToInsert && !previousOwnedWrapper.childElementCount) {
+      previousOwnedWrapper.remove();
     }
 
     this.currentDockingTarget = {
       container: anchor.container,
-      strategy
+      strategy,
+      anchor
     };
-    this.currentStrategyKey = platform in DOCKING_STRATEGIES ? platform : 'generic';
+    this.currentStrategyKey = strategyKey;
 
-    this.setupDockingObserver(anchor.container, strategy);
+    this.setupDockingObserver(anchor.container, strategy, anchor);
 
     return true;
   }
 
   resetButtonStyles() {
     if (!this.currentButton) return;
-    
+
     // Remove all platform-specific classes
     this.currentButton.className = 'ape-inline-button';
-    
+
     // Reset all possible inline styles to empty string
     Object.assign(this.currentButton.style, {
       position: '',
+      inset: '',
       left: '',
       right: '',
       top: '',
@@ -405,10 +445,12 @@ class InlineUI {
       paddingBottom: '',
       paddingLeft: '',
       borderRadius: '',
+      flex: '',
       display: '',
       alignItems: '',
       justifyContent: '',
       backgroundColor: '',
+      background: '',
       color: '',
       border: '',
       boxShadow: ''
@@ -433,7 +475,7 @@ class InlineUI {
     this.clearDockingObserver();
   }
 
-  setupDockingObserver(container, strategy) {
+  setupDockingObserver(container, strategy, anchor) {
     this.clearDockingObserver();
     if (!container) return;
 
@@ -460,7 +502,7 @@ class InlineUI {
       }
 
       const stillDocked = container.contains(this.currentButton);
-      const stillValid = typeof strategy.validate === 'function' ? strategy.validate(container) : true;
+      const stillValid = typeof strategy.validate === 'function' ? strategy.validate(container, anchor) : true;
 
       if (!stillDocked || !stillValid) {
         const success = this.dockButton(this.cachedInputElement);
@@ -475,13 +517,13 @@ class InlineUI {
       subtree: true
     });
 
-    this.composerObserver = observer;
+    this.dockingObserver = observer;
   }
 
   clearDockingObserver() {
-    if (this.composerObserver) {
-      this.composerObserver.disconnect();
-      this.composerObserver = null;
+    if (this.dockingObserver) {
+      this.dockingObserver.disconnect();
+      this.dockingObserver = null;
     }
     this.currentDockingTarget = null;
     this.currentStrategyKey = null;
@@ -526,16 +568,16 @@ class InlineUI {
         this.showToast('Enhancement failed', 'error');
         return;
       }
-        const trimmedOriginal = context.currentPrompt.trim();
-        const trimmedEnhanced = enhanced.trim();
-        if (!trimmedEnhanced.length) {
-          this.showToast('No enhanced content returned', 'warning');
-          return;
-        }
-        if (trimmedEnhanced === trimmedOriginal) {
-          this.showToast('No changes were applied to the prompt', 'info');
-          return;
-        }
+      const trimmedOriginal = context.currentPrompt.trim();
+      const trimmedEnhanced = enhanced.trim();
+      if (!trimmedEnhanced.length) {
+        this.showToast('No enhanced content returned', 'warning');
+        return;
+      }
+      if (trimmedEnhanced === trimmedOriginal) {
+        this.showToast('No changes were applied to the prompt', 'info');
+        return;
+      }
 
       this.enhancedPrompt = enhanced;
 
@@ -598,7 +640,10 @@ class InlineUI {
         action: 'getSettings'
       });
       if (response) {
-        this.settings = response;
+        this.settings = {
+          ...this.settings,
+          ...response
+        };
       }
       return this.settings || {};
     } catch (error) {
@@ -645,19 +690,6 @@ class InlineUI {
           }
         }
       });
-
-      // Update usage stats
-      const stats = await browserCompat.storageGet(['usageStats']) || {};
-      const usageStats = stats.usageStats || { totalEnhancements: 0, byokEnhancements: 0 };
-
-      usageStats.totalEnhancements++;
-
-      const subscription = await browserCompat.sendMessage({ action: 'getSubscription' });
-      if (subscription && subscription.type === 'byok') {
-        usageStats.byokEnhancements++;
-      }
-
-      await browserCompat.storageSet({ usageStats });
     } catch (error) {
       console.error('[APE InlineUI] Failed to track enhancement:', error);
     }

@@ -50,6 +50,9 @@ async function handleMessage(request) {
       return await getSettings();
     case 'saveSettings':
       return await saveSettings(data.settings);
+    case 'openOptions':
+      await browserCompat.runtime.openOptionsPage();
+      return { success: true };
     default:
       throw new Error(`Unknown action: ${action}`);
   }

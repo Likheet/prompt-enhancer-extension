@@ -5,18 +5,17 @@
 
 import { ENHANCEMENT_LEVELS, GEMINI_API, ERROR_MESSAGES, PROMPT_TEMPLATES } from '../shared/constants.js';
 import { truncate, retryWithBackoff } from '../shared/utils.js';
-import { TEST_MODE_ENABLED, HARDCODED_API_KEY } from '../shared/test-config.js';
 
 class PromptEnhancer {
   constructor(subscriptionManager) {
     this.subscriptionManager = subscriptionManager;
     this.enhancementStrategies = {
-      clarification: this.clarifyPrompt.bind(this),
-      contextual: this.addContext.bind(this),
-      structured: this.structurePrompt.bind(this),
-      technical: this.enhanceTechnical.bind(this),
-      creative: this.enhanceCreative.bind(this),
-      general: this.enhanceGeneral.bind(this)
+      clarification: (prompt) => this.clarifyPrompt(prompt),
+      contextual: (prompt, context) => this.addContext(prompt, context),
+      structured: (prompt) => this.structurePrompt(prompt),
+      technical: (prompt) => this.enhanceTechnical(prompt),
+      creative: (prompt) => this.enhanceCreative(prompt),
+      general: (prompt, _context, settings) => this.enhanceGeneral(prompt, settings)
     };
   }
 
@@ -28,12 +27,10 @@ class PromptEnhancer {
       ? await this.subscriptionManager.getActiveSubscription()
       : null;
 
-    const apiKey = settings.geminiKey
-      || subscription?.apiKey
-      || (TEST_MODE_ENABLED ? HARDCODED_API_KEY : null);
+    const apiKey = settings.geminiKey || subscription?.apiKey;
 
     if (!apiKey) {
-      throw new Error(ERROR_MESSAGES.API_KEY_INVALID);
+      return this.ruleBasedEnhancement(context, settings);
     }
 
     return await this.enhanceWithGemini(context, apiKey, settings);
@@ -43,7 +40,7 @@ class PromptEnhancer {
    * Rule-based enhancement (free tier)
    */
   ruleBasedEnhancement(context, settings = {}) {
-    const { currentPrompt, conversationHistory = [], metadata = {} } = context;
+    const { currentPrompt, metadata = {} } = context;
 
     if (!currentPrompt || currentPrompt.trim().length === 0) {
       throw new Error(ERROR_MESSAGES.NO_PROMPT);
@@ -76,7 +73,7 @@ class PromptEnhancer {
    * AI-powered enhancement with Gemini (BYOK tier)
    */
   async enhanceWithGemini(context, apiKey, settings = {}) {
-    const { currentPrompt, conversationHistory = [], metadata = {} } = context;
+    const { currentPrompt } = context;
 
     if (!currentPrompt || currentPrompt.trim().length === 0) {
       throw new Error(ERROR_MESSAGES.NO_PROMPT);
@@ -106,7 +103,7 @@ class PromptEnhancer {
    * Call Gemini API
    */
   async callGeminiAPI(prompt, apiKey) {
-    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_API.TIMEOUT);
@@ -115,7 +112,8 @@ class PromptEnhancer {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
         },
         body: JSON.stringify({
           contents: [{
@@ -228,7 +226,7 @@ ${historyText}
   /**
    * Clarify vague prompts
    */
-  clarifyPrompt(prompt, context, settings) {
+  clarifyPrompt(prompt) {
     let enhanced = prompt;
 
     // Add specificity
@@ -263,8 +261,8 @@ ${historyText}
   /**
    * Add relevant context
    */
-  addContext(prompt, context, settings) {
-    const { conversationHistory, metadata } = context;
+  addContext(prompt, context) {
+    const { conversationHistory } = context;
     const relevant = this.findRelevantContext(prompt, conversationHistory);
 
     if (relevant.length === 0) return prompt;
@@ -279,7 +277,7 @@ ${historyText}
   /**
    * Structure prompt with clear sections
    */
-  structurePrompt(prompt, context, settings) {
+  structurePrompt(prompt) {
     const components = this.parsePromptComponents(prompt);
 
     let structured = '';
@@ -310,7 +308,7 @@ ${historyText}
   /**
    * Enhance technical prompts
    */
-  enhanceTechnical(prompt, context, settings) {
+  enhanceTechnical(prompt) {
     let enhanced = prompt;
 
     // Add language specification if coding-related
@@ -336,7 +334,7 @@ ${historyText}
   /**
    * Enhance creative prompts
    */
-  enhanceCreative(prompt, context, settings) {
+  enhanceCreative(prompt) {
     let enhanced = prompt;
 
     // Add tone/style specification if missing
@@ -364,7 +362,7 @@ ${historyText}
   /**
    * General enhancement
    */
-  enhanceGeneral(prompt, context, settings) {
+  enhanceGeneral(prompt, settings = {}) {
     let enhanced = prompt;
 
     // Add context clarification

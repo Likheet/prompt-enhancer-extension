@@ -11,6 +11,13 @@ export const PLATFORMS = {
   GENERIC: 'generic'
 };
 
+export const SITE_PLACEMENTS = {
+  AUTO: 'auto',
+  AFTER_ATTACH: 'after-attach',
+  BEFORE_SEND: 'before-send',
+  COMPOSER_END: 'composer-end'
+};
+
 export const SUBSCRIPTION_TYPES = {
   FREE: 'free',
   BYOK: 'byok'
@@ -46,7 +53,6 @@ export const DEFAULT_SETTINGS = {
   contextWindow: 10,
   autoEnhance: false,
   showDiff: true,
-  geminiApiKey: null,
   promptTemplateType: 'standard',
   customPromptTemplate: '',
   shortcuts: {
@@ -137,8 +143,8 @@ Now enhance this prompt (output ONLY the structured format above, nothing else):
 };
 
 export const GEMINI_API = {
-  BASE_URL: 'https://generativelanguage.googleapis.com/v1',
-  MODEL: 'gemini-2.5-flash-lite',
+  BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+  MODEL: 'gemini-3.5-flash',
   MAX_RETRIES: 3,
   TIMEOUT: 10000
 };
@@ -165,3 +171,54 @@ export const SUCCESS_MESSAGES = {
   COPIED: 'Copied to clipboard!',
   SETTINGS_SAVED: 'Settings saved successfully!'
 };
+
+/**
+ * List of domains where the extension should be active by default (Generic Strategy)
+ * This covers "Top 100" AI sites to avoid enabling it on literally every website.
+ */
+export const SUPPORTED_AI_DOMAINS = [
+  // Major Platforms (Native adapters exist for top 5, but listing here for safety)
+  'chatgpt.com', 'openai.com',
+  'claude.ai', 'anthropic.com',
+  'gemini.google.com', 'aistudio.google.com',
+  'perplexity.ai',
+  'copilot.microsoft.com', // Microsoft Copilot
+  'poe.com',               // Quora Poe
+
+  // Popular Chatbots & Assistants
+  'huggingface.co',        // HuggingChat
+  'chat.mistral.ai',       // Mistral Le Chat
+  'deepseek.com',          // DeepSeek
+  'pi.ai',                 // Inflection Pi
+  'character.ai',          // Character.ai
+  'replika.com',           // Replika
+  'jasper.ai',             // Jasper
+  'writesonic.com',        // Chatsonic
+  'you.com',               // You.com
+  'phind.com',             // Phind
+  'groq.com',              // GroqCloud
+  'chat.lmsys.org',        // LMSYS Arena
+  'forefront.ai',          // Forefront
+  'ora.sh',                // Ora
+  'chatpdf.com',           // ChatPDF
+
+  // Chinese Platforms
+  'kimi.ai', 'moonshot.cn', // Kimi
+  'yiyan.baidu.com',        // Ernie Bot
+  'chatglm.cn',             // ChatGLM
+  'doubao.com',             // Doubao (ByteDance)
+  'baichuan-ai.com',        // Baichuan
+  'minimax.chat',           // Hailuo
+  'coze.com',               // Coze
+
+  // Development & Playgrounds
+  'openrouter.ai',
+  'together.ai',
+  'anyscale.com',
+
+  // Others
+  'zapier.com',             // Zapier Central
+  'monica.im',              // Monica
+  'harpa.ai',
+  'merlin.foyer.work'
+];

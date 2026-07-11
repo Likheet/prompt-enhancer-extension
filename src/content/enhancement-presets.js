@@ -5,7 +5,6 @@
 
 import browserCompat from '../shared/browser-compat.js';
 import { GEMINI_API, ERROR_MESSAGES, PROMPT_TEMPLATES, ENHANCEMENT_PRESETS } from '../shared/constants.js';
-import { TEST_MODE_ENABLED, HARDCODED_API_KEY } from '../shared/test-config.js';
 
 class EnhancementPresets {
   constructor() {
@@ -137,15 +136,17 @@ Return ONLY the enhanced prompt without any explanation.`,
     const settings = await this.getSettings();
     const subscription = await this.getSubscription();
 
-    const apiKey = settings.geminiKey
-      || subscription?.apiKey
-      || (TEST_MODE_ENABLED ? HARDCODED_API_KEY : null);
+    const apiKey = settings.geminiKey || subscription?.apiKey;
 
     if (apiKey) {
-      return await this.enhanceWithAI(safeContext, preset, presetKey, customPrompt, apiKey, settings);
+      try {
+        return await this.enhanceWithAI(safeContext, preset, presetKey, customPrompt, apiKey, settings);
+      } catch (error) {
+        console.warn('[EnhancementPresets] Falling back to local enhancement:', error.message);
+      }
     }
 
-    throw new Error('API key is required for AI enhancement');
+    return await this.enhanceWithRules(safeContext, preset);
   }
 
   async enhanceWithAI(context, preset, presetKey, customPrompt, apiKey, settings) {
@@ -162,11 +163,12 @@ Return ONLY the enhanced prompt without any explanation.`,
 
     try {
       const response = await fetch(
-        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`,
+        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
           },
           body: JSON.stringify({
             contents: [{
@@ -260,15 +262,6 @@ Return ONLY the enhanced prompt without any explanation.`,
 
     // Intelligent context inclusion
     const conversationHistory = context.conversationHistory || [];
-    const needsContext = this.contextIsRelevant(userInput, conversationHistory);
-
-    // DEBUG: Log context extraction results
-    console.log('[APE EnhancementPresets] Context check:', {
-      userInput: userInput.substring(0, 50),
-      historyLength: conversationHistory.length,
-      needsContext,
-      history: conversationHistory.slice(-2).map(m => ({ role: m.role, content: m.content.substring(0, 50) }))
-    });
 
     if (conversationHistory.length > 0) {
       // Always include context if available - AI will determine relevance
@@ -386,11 +379,11 @@ Return ONLY the enhanced prompt without any explanation.`,
     const enhancer = new PromptEnhancer(null);
 
     const strategies = {
-      clarification: () => enhancer.clarifyPrompt(context.currentPrompt, context),
-      structured: () => enhancer.structurePrompt(context.currentPrompt, context),
-      technical: () => enhancer.enhanceTechnical(context.currentPrompt, context),
-      creative: () => enhancer.enhanceCreative(context.currentPrompt, context),
-      general: () => enhancer.enhanceGeneral(context.currentPrompt, context)
+      clarification: () => enhancer.clarifyPrompt(context.currentPrompt),
+      structured: () => enhancer.structurePrompt(context.currentPrompt),
+      technical: () => enhancer.enhanceTechnical(context.currentPrompt),
+      creative: () => enhancer.enhanceCreative(context.currentPrompt),
+      general: () => enhancer.enhanceGeneral(context.currentPrompt)
     };
 
     const enhanceFn = strategies[strategy] || strategies.general;

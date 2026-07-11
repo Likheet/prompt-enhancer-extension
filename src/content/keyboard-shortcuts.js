@@ -4,7 +4,7 @@
  */
 
 import browserCompat from '../shared/browser-compat.js';
-import { ENHANCEMENT_PRESETS, STORAGE_KEYS } from '../shared/constants.js';
+import { STORAGE_KEYS } from '../shared/constants.js';
 import { renderStaticHTML } from '../shared/utils.js';
 
 class KeyboardShortcuts {
@@ -13,6 +13,8 @@ class KeyboardShortcuts {
     this.settings = settings;
     this.enabled = true;
     this.quickEditorOpen = false;
+    this.initialized = false;
+    this.boundHandleKeyDown = this.handleKeyDown.bind(this);
 
     this.init();
   }
@@ -21,10 +23,12 @@ class KeyboardShortcuts {
    * Initialize keyboard shortcuts
    */
   init() {
+    if (this.initialized) return;
     console.log('[KeyboardShortcuts] Initializing...');
 
     // Listen for keyboard events
-    document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    document.addEventListener('keydown', this.boundHandleKeyDown);
+    this.initialized = true;
 
     console.log('[KeyboardShortcuts] Initialized');
   }
@@ -364,7 +368,7 @@ class KeyboardShortcuts {
    */
   async getSettings() {
     try {
-      const result = await browserCompat.storage_get([STORAGE_KEYS.SETTINGS]);
+      const result = await browserCompat.storageGet([STORAGE_KEYS.SETTINGS]);
       return result[STORAGE_KEYS.SETTINGS] || this.settings || {};
     } catch (error) {
       console.error('[KeyboardShortcuts] Failed to get settings:', error);
@@ -377,7 +381,7 @@ class KeyboardShortcuts {
    */
   async saveSettings(settings) {
     try {
-      await browserCompat.storage_set({
+      await browserCompat.storageSet({
         [STORAGE_KEYS.SETTINGS]: settings
       });
 
@@ -415,6 +419,8 @@ class KeyboardShortcuts {
   destroy() {
     this.enabled = false;
     this.closeQuickEditor();
+    document.removeEventListener('keydown', this.boundHandleKeyDown);
+    this.initialized = false;
   }
 }
 

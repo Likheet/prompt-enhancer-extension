@@ -1,552 +1,348 @@
 /**
- * Platform-specific strategies for docking the inline enhance button.
- * 
- * ARCHITECTURE:
- * Each platform has an ISOLATED configuration with:
- * - findAnchor(inputElement?): Locates where to insert the button
- * - applyStyles(button): Sets platform-specific size, spacing, colors
- * - validate(container): Checks if the anchor is still valid
- * 
- * ADDING NEW PLATFORMS:
- * 1. Add a new key to DOCKING_STRATEGIES (e.g., 'perplexity')
- * 2. Implement the three methods above
- * 3. Changes are ISOLATED—won't affect other platforms
- * 
- * UNIVERSAL FALLBACK:
- * Use 'universal' strategy for bottom-right fixed positioning
+ * Composer-scoped strategies for placing the enhancer beside native controls.
+ * Selectors are intentionally resolved from the selected prompt editor outwards:
+ * a control from another (possibly hidden) composer must never become the anchor.
  */
 
-const queryFirst = (selectors, root = document) => {
-  if (!Array.isArray(selectors)) return null;
-  for (const selector of selectors) {
-    if (!selector) continue;
-    try {
-      const node = root.querySelector(selector);
-      if (node) {
-        return node;
-      }
-    } catch (error) {
-      continue;
-    }
-  }
-  return null;
+const CONTROL_SELECTOR = 'button, input[type="submit"], [role="button"]';
+
+const SELECTORS = {
+  attach: [
+    '[data-testid*="attachment" i]',
+    '[data-testid*="attach" i]',
+    'button[iconname="add_circle"]',
+    '[aria-label*="attach" i]',
+    '[aria-label*="add file" i]',
+    '[aria-label*="add content" i]',
+    '[aria-label*="upload" i]',
+    '[aria-label*="insert asset" i]'
+  ],
+  model: [
+    '[data-testid="model-selector-dropdown"]',
+    '[data-testid*="model-selector" i]',
+    '[data-test-id="bard-mode-menu-button"]',
+    'button.__composer-pill[aria-haspopup="menu"]',
+    'button[data-pill="true"][aria-haspopup="menu"]',
+    '[aria-label*="model picker" i]',
+    '[aria-label*="model selector" i]',
+    '[aria-label*="choose model" i]',
+    '[aria-label*="mode picker" i]'
+  ],
+  send: [
+    '#composer-submit-button',
+    '[data-testid="send-button"]',
+    '[data-testid="composer-send-button"]',
+    '[data-testid*="send-button" i]',
+    'button[type="submit"]',
+    'input[type="submit"]',
+    '[aria-label*="send" i]',
+    '[aria-label*="submit" i]',
+    '[aria-label*="run prompt" i]',
+    'button[aria-label="Run" i]'
+  ],
+  sources: [
+    '[data-testid="sources-switcher-button"]',
+    '[data-testid*="source" i]',
+    '[aria-label*="source" i]',
+    '[aria-label="Search" i]'
+  ]
 };
 
-export const DOCKING_STRATEGIES = {
-  chatgpt: {
-    findAnchor() {
-      const actionBarSelectors = [
-        'div[data-testid="composer-actions"]',
-        'form div.ms-auto.flex.items-center',
-        'form div.ms-auto.flex',
-        'form div.flex.items-center.gap-2'
-      ];
-      const sendButtonSelectors = [
-        'button[data-testid="send-button"]',
-        'button[id="composer-submit-button"]',
-        'button[aria-label*="Send"]'
-      ];
+function isUsable(element) {
+  if (!element || !element.isConnected || element.hidden) return false;
+  if (element.getAttribute?.('aria-hidden') === 'true') return false;
 
-      const actionBar = queryFirst(actionBarSelectors);
-      if (!actionBar) return null;
+  try {
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  } catch (_error) {
+    return true;
+  }
+}
 
-      const sendButton = queryFirst(sendButtonSelectors, actionBar);
-      const referenceNode = sendButton || actionBar.firstElementChild;
-
-      return {
-        container: actionBar,
-        referenceNode,
-        position: 'before'
-      };
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-chatgpt-button';
-      Object.assign(button.style, {
-        position: 'relative',
-        left: 'auto',
-        right: 'auto',
-        top: 'auto',
-        bottom: 'auto',
-        zIndex: '10',
-        width: '36px',
-        height: '36px',
-        minWidth: '36px',
-        minHeight: '36px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '12px',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        cursor: 'pointer',
-        transition: 'transform 0.2s ease',
-        outline: 'none',
-        background: 'transparent'
-      });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '12px';
-        button.style.marginRight = '';
-      } else {
-        button.style.marginRight = '12px';
-        button.style.marginLeft = '';
+function queryAll(selectors, root = document) {
+  const matches = [];
+  for (const selector of selectors || []) {
+    try {
+      for (const node of root.querySelectorAll(selector)) {
+        if (!matches.includes(node) && isUsable(node)) matches.push(node);
       }
-    },
-    validate(container) {
-      if (!container || !container.isConnected) return false;
-      const sendButton = queryFirst([
-        'button[data-testid="send-button"]',
-        'button[id="composer-submit-button"]'
-      ], container);
-      return Boolean(sendButton);
-    }
-  },
-  claude: {
-    findAnchor() {
-      const sendButton = queryFirst([
-        'fieldset button[aria-label*="Send"]',
-        'fieldset button[type="submit"]',
-        'button[data-testid*="composer-send"]'
-      ]);
-      if (!sendButton) return null;
-
-      const controlsRoot = sendButton.closest('div.flex.gap-2\\.5.w-full.items-center');
-      if (!controlsRoot) return null;
-
-      const modelDropdown = queryFirst([
-        'button[data-testid="model-selector-dropdown"]',
-        'button[aria-label*="Sonnet"]',
-        'button[data-testid*="model"]'
-      ], controlsRoot);
-
-      if (modelDropdown) {
-        // Find the wrapper div that contains the dropdown
-        const modelWrapper = modelDropdown.closest('div[type="button"]') || 
-                            modelDropdown.parentElement;
-        
-        if (modelWrapper) {
-          return {
-            container: modelWrapper.parentElement,
-            referenceNode: modelWrapper.nextSibling,
-            position: 'before'
-          };
-        }
-      }
-
-      return {
-        container: controlsRoot,
-        referenceNode: null,
-        position: 'append'
-      };
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-claude-button';
-      Object.assign(button.style, {
-        position: 'relative',
-        left: 'auto',
-        bottom: 'auto',
-        right: 'auto',
-        top: 'auto',
-        width: '36px',
-        height: '36px',
-        minWidth: '36px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        zIndex: '',
-        outline: 'none',
-        background: 'transparent',
-        transition: 'transform 0.2s ease'
-      });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '';
-      } else {
-        button.style.marginRight = '';
-      }
-    },
-    validate(container) {
-      if (!container || !container.isConnected) {
-        return false;
-      }
-
-      const modelDropdownStillPresent = queryFirst([
-        'button[data-testid="model-selector-dropdown"]',
-        'button[aria-label*="Sonnet"]',
-        'button[data-testid*="model"]'
-      ], container);
-
-      return Boolean(modelDropdownStillPresent);
-    }
-  },
-  gemini: {
-    findAnchor() {
-      // Look for the trailing-actions-wrapper (right side of input)
-      const trailingActionsWrapper = queryFirst([
-        'div.trailing-actions-wrapper',
-        'div[class*="trailing-actions"]'
-      ]);
-
-      if (trailingActionsWrapper) {
-        // Find the model picker container within trailing actions
-        const modelPickerContainer = queryFirst([
-          'div.model-picker-container',
-          'div[class*="model-picker"]'
-        ], trailingActionsWrapper);
-
-        if (modelPickerContainer) {
-          return {
-            container: trailingActionsWrapper,
-            referenceNode: modelPickerContainer,
-            position: 'before'
-          };
-        }
-
-        // Fallback: insert at the start of trailing actions
-        return {
-          container: trailingActionsWrapper,
-          referenceNode: trailingActionsWrapper.firstChild,
-          position: 'before'
-        };
-      }
-
-      // Fallback to leading-actions-wrapper if trailing not found
-      const leadingActionsWrapper = queryFirst([
-        'div.leading-actions-wrapper',
-        'div[class*="leading-actions"]'
-      ]);
-
-      if (leadingActionsWrapper) {
-        return {
-          container: leadingActionsWrapper,
-          referenceNode: null,
-          position: 'append'
-        };
-      }
-
-      return null;
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-gemini-button';
-      Object.assign(button.style, {
-        position: 'relative',
-        left: 'auto',
-        bottom: 'auto',
-        right: 'auto',
-        top: 'auto',
-        width: '36px',
-        height: '36px',
-        minWidth: '36px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '6px',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        zIndex: '',
-        outline: 'none',
-        background: 'transparent',
-        transition: 'transform 0.2s ease'
-      });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '6px';
-        button.style.marginRight = '';
-      }
-    },
-    validate(container) {
-      if (!container || !container.isConnected) return false;
-
-      const trailingActionsWrapper = container.closest('div.trailing-actions-wrapper') || 
-                                    container;
-
-      return Boolean(trailingActionsWrapper && trailingActionsWrapper.isConnected);
-    }
-  },
-  perplexity: {
-    findAnchor() {
-      console.log('[APE Perplexity] Starting anchor search...');
-      
-      // Primary strategy: place button next to the sources/globe button inside the right toolbar
-      const rightToolbar = document.querySelector('div[data-cplx-component="query-box-pplx-right-toolbar-components-wrapper"]');
-      console.log('[APE Perplexity] Right toolbar found:', !!rightToolbar);
-      if (rightToolbar) {
-        const globeButton = rightToolbar.querySelector('button[data-testid="sources-switcher-button"]');
-        console.log('[APE Perplexity] Globe button found:', !!globeButton);
-        return {
-          container: rightToolbar,
-          referenceNode: globeButton || rightToolbar.firstChild,
-          position: 'before',
-          needsWrapper: false
-        };
-      }
-
-      // Fallback Strategy 1: Find the contenteditable input area directly
-      const contentEditableInput = document.querySelector('#ask-input[contenteditable="true"]');
-      console.log('[APE Perplexity] Contenteditable input (fallback) found:', !!contentEditableInput);
-      if (contentEditableInput) {
-        const parentFlex = contentEditableInput.closest('div[class*="relative"], div.flex');
-        if (parentFlex) {
-          console.log('[APE Perplexity] Using contenteditable parent flex fallback');
-          return {
-            container: parentFlex,
-            referenceNode: parentFlex.firstChild,
-            position: 'append',
-            needsWrapper: false
-          };
-        }
-      }
-
-      console.warn('[APE Perplexity] No anchor found!');
-      return null;
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-perplexity-button';
-      Object.assign(button.style, {
-        position: 'relative',
-        marginRight: '4px',
-        marginLeft: '0',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 'auto'
-      });
-    },
-    validate(container) {
-      if (!container || !container.isConnected) return false;
-
-      // Check if we're in a valid input/actions area
-      const inputElement = queryFirst([
-        'div[contenteditable="true"][id="ask-input"]',
-        'textarea[placeholder*="Ask"]',
-        'textarea',
-        'div[contenteditable="true"]'
-      ]);
-
-      return Boolean(inputElement && inputElement.isConnected);
-    }
-  },
-  aistudio: {
-    findAnchor() {
-      console.log('[APE AI Studio] Starting anchor search...');
-
-      // Strategy 1: Find the add circle button (ms-add-chunk-menu)
-      const addButton = document.querySelector('button[iconname="add_circle"], button[aria-label*="Insert assets"]');
-      console.log('[APE AI Studio] Add button found:', !!addButton);
-      
-      if (addButton) {
-        const buttonWrapper = addButton.closest('div.button-wrapper');
-        if (buttonWrapper) {
-          console.log('[APE AI Studio] Using button wrapper strategy');
-          return {
-            container: buttonWrapper.parentElement,
-            referenceNode: buttonWrapper,
-            position: 'before',
-            needsWrapper: true,
-            wrapperClass: 'button-wrapper',
-            wrapperTag: 'div'
-          };
-        }
-      }
-
-      // Strategy 2: Find button-wrapper divs in the prompt input container
-      const buttonWrappers = document.querySelectorAll('div.button-wrapper');
-      console.log('[APE AI Studio] Found', buttonWrappers.length, 'button wrappers');
-      
-      for (const wrapper of buttonWrappers) {
-        const addBtn = wrapper.querySelector('button[iconname="add_circle"]');
-        if (addBtn && wrapper.parentElement) {
-          console.log('[APE AI Studio] Using first button-wrapper with add button');
-          return {
-            container: wrapper.parentElement,
-            referenceNode: wrapper,
-            position: 'before',
-            needsWrapper: true,
-            wrapperClass: 'button-wrapper',
-            wrapperTag: 'div'
-          };
-        }
-      }
-
-      // Strategy 3: Fallback to prompt-input-wrapper-container
-      const promptContainer = document.querySelector('div.prompt-input-wrapper-container');
-      if (promptContainer) {
-        const buttonContainer = promptContainer.querySelector('div.button-wrapper');
-        if (buttonContainer) {
-          console.log('[APE AI Studio] Using prompt container fallback');
-          return {
-            container: buttonContainer.parentElement,
-            referenceNode: buttonContainer,
-            position: 'before',
-            needsWrapper: true,
-            wrapperClass: 'button-wrapper',
-            wrapperTag: 'div'
-          };
-        }
-      }
-
-      console.warn('[APE AI Studio] No anchor found!');
-      return null;
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-aistudio-button';
-      
-      Object.assign(button.style, {
-        position: 'relative',
-        left: 'auto',
-        bottom: 'auto',
-        right: 'auto',
-        top: 'auto',
-        width: '40px',
-        height: '40px',
-        minWidth: '40px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        zIndex: '',
-        transition: 'transform 0.2s ease',
-        cursor: 'pointer',
-        outline: 'none',
-        background: 'transparent'
-      });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '';
-        button.style.marginRight = '';
-      }
-    },
-    validate(container) {
-      if (!container || !container.isConnected) return false;
-
-      const inputElement = document.querySelector('div[contenteditable="true"]');
-      return Boolean(inputElement && inputElement.isConnected);
-    }
-  },
-  universal: {
-    findAnchor() {
-      // Universal fallback: fixed position bottom-right
-      return {
-        container: document.body,
-        referenceNode: null,
-        position: 'append'
-      };
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-universal-button';
-      Object.assign(button.style, {
-        position: 'fixed',
-        right: '20px',
-        bottom: '20px',
-        left: 'auto',
-        top: 'auto',
-        zIndex: '9999',
-        width: '48px',
-        height: '48px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: 'none',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        cursor: 'pointer',
-        marginLeft: '',
-        marginRight: '',
-        outline: 'none',
-        background: 'transparent',
-        transition: 'transform 0.2s ease'
-      });
-    },
-    validate() {
-      return true; // Always valid for universal positioning
-    }
-  },
-  
-  // Generic strategy for sites without specific configuration
-  generic: {
-    findAnchor(inputElement) {
-      if (!inputElement) return null;
-      const container = inputElement.parentElement;
-      if (!container) return null;
-
-      const submit = container.querySelector('button[type="submit"], input[type="submit"]');
-      if (submit) {
-        return {
-          container,
-          referenceNode: submit,
-          position: 'before'
-        };
-      }
-      return null;
-    },
-    applyStyles(button) {
-      button.className = 'ape-inline-button ape-generic-button';
-      Object.assign(button.style, {
-        position: 'relative',
-        left: 'auto',
-        bottom: 'auto',
-        right: 'auto',
-        top: 'auto',
-        width: '36px',
-        height: '36px',
-        borderRadius: '0',
-        padding: '0',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: '',
-        marginRight: '',
-        backgroundColor: 'transparent',
-        color: 'transparent',
-        border: 'none',
-        boxShadow: 'none',
-        outline: 'none',
-        background: 'transparent',
-        transition: 'transform 0.2s ease'
-      });
-
-      if (document.dir === 'rtl') {
-        button.style.marginLeft = '0.5rem';
-      } else {
-        button.style.marginRight = '0.5rem';
-      }
-    },
-    validate(container) {
-      return Boolean(container && container.isConnected);
+    } catch (_error) {
+      // A site must not break mounting if one experimental selector is invalid.
     }
   }
+  return matches;
+}
+
+function findAction(root, kind) {
+  return queryAll(SELECTORS[kind], root)[0] || null;
+}
+
+function hasComposerSignal(element) {
+  const signal = [
+    element.tagName,
+    element.id,
+    element.className,
+    element.getAttribute?.('data-testid'),
+    element.getAttribute?.('data-type')
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return /form|fieldset|composer|prompt|query-box|chat-input|input-area|text-input/.test(signal);
+}
+
+function findComposerRoot(inputElement) {
+  if (!inputElement?.isConnected) return null;
+
+  const ancestors = [];
+  let current = inputElement.parentElement;
+  while (current && current !== document.body) {
+    ancestors.push(current);
+    current = current.parentElement;
+  }
+
+  const withActions = ancestors.find((candidate) => {
+    if (!isUsable(candidate)) return false;
+    return Boolean(
+      findAction(candidate, 'send') ||
+      findAction(candidate, 'attach') ||
+      findAction(candidate, 'model') ||
+      findAction(candidate, 'sources')
+    );
+  });
+
+  if (withActions) {
+    const semantic = ancestors.find((candidate) =>
+      candidate.contains(withActions) && hasComposerSignal(candidate)
+    );
+    return semantic || withActions;
+  }
+
+  return ancestors.find(hasComposerSignal) || inputElement.parentElement;
+}
+
+function directChildFor(element, container) {
+  if (!element || !container?.contains(element)) return null;
+  let directChild = element;
+  while (directChild.parentElement && directChild.parentElement !== container) {
+    directChild = directChild.parentElement;
+  }
+  return directChild.parentElement === container ? directChild : null;
+}
+
+function findToolbar(action, composer) {
+  if (!action || !composer?.contains(action)) return null;
+  let current = action.parentElement;
+  let oneControlFallback = null;
+
+  while (current && current !== composer.parentElement) {
+    const signal = [
+      current.className,
+      current.id,
+      current.getAttribute?.('data-testid'),
+      current.getAttribute?.('data-cplx-component'),
+      current.getAttribute?.('role')
+    ].filter(Boolean).join(' ').toLowerCase();
+    const controlCount = current.querySelectorAll(CONTROL_SELECTOR).length;
+
+    if (controlCount >= 2 || /toolbar|actions|controls|trailing|leading/.test(signal)) {
+      return current;
+    }
+    if (!oneControlFallback && controlCount === 1) oneControlFallback = current;
+    if (current === composer) break;
+    current = current.parentElement;
+  }
+
+  return oneControlFallback || composer;
+}
+
+function createActionAnchor(inputElement, action, position = 'before', extra = {}) {
+  const composer = findComposerRoot(inputElement);
+  if (!composer || !action || !composer.contains(action)) return null;
+  const container = findToolbar(action, composer);
+  const referenceNode = directChildFor(action, container);
+  if (!container || !referenceNode) return null;
+
+  return {
+    composer,
+    inputElement,
+    action,
+    container,
+    referenceNode,
+    position,
+    ...extra
+  };
+}
+
+function appendAnchor(inputElement, composer = findComposerRoot(inputElement)) {
+  if (!composer) return null;
+  const action = findAction(composer, 'send') || findAction(composer, 'attach');
+  const container = action ? findToolbar(action, composer) : composer;
+  return {
+    composer,
+    inputElement,
+    action,
+    container,
+    referenceNode: null,
+    position: 'append'
+  };
+}
+
+function controlSize(anchor) {
+  const reference = anchor?.action || anchor?.referenceNode;
+  const height = reference?.getBoundingClientRect?.().height || 36;
+  return Math.max(32, Math.min(40, Math.round(height))) || 36;
+}
+
+function applyNativeControlStyles(button, platform, anchor) {
+  const size = controlSize(anchor);
+  const nativeControl = anchor?.action || anchor?.referenceNode;
+  let nativeColor = '#5f6368';
+  try {
+    const computedColor = nativeControl && window.getComputedStyle(nativeControl).color;
+    if (computedColor && computedColor !== 'rgba(0, 0, 0, 0)') nativeColor = computedColor;
+  } catch (_error) {
+    // The neutral fallback works in isolated and test documents.
+  }
+
+  button.className = `ape-inline-button ape-${platform}-button`;
+  button.dataset.apeDockMode = anchor?.position || 'append';
+  Object.assign(button.style, {
+    position: 'relative',
+    inset: 'auto',
+    width: `${size}px`,
+    height: `${size}px`,
+    minWidth: `${size}px`,
+    minHeight: `${size}px`,
+    maxWidth: `${size}px`,
+    maxHeight: `${size}px`,
+    flex: `0 0 ${size}px`,
+    borderRadius: '9999px',
+    padding: '0',
+    margin: '0 2px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'transparent',
+    backgroundColor: 'transparent',
+    color: nativeColor,
+    border: 'none',
+    boxShadow: 'none',
+    cursor: 'pointer',
+    zIndex: 'auto'
+  });
+}
+
+function validate(container, anchor) {
+  if (!container?.isConnected) return false;
+  if (!anchor) return true;
+  return Boolean(
+    anchor.composer?.isConnected &&
+    anchor.inputElement?.isConnected &&
+    anchor.composer.contains(anchor.inputElement) &&
+    (!anchor.action || anchor.composer.contains(anchor.action))
+  );
+}
+
+function platformStrategy(platform, findAnchor) {
+  return {
+    findAnchor,
+    applyStyles(button, _container, anchor) {
+      applyNativeControlStyles(button, platform, anchor);
+    },
+    validate
+  };
+}
+
+function genericAnchor(inputElement, options = {}) {
+  const composer = findComposerRoot(inputElement);
+  if (!composer) return null;
+
+  const placement = options.placement || 'auto';
+  const attach = findAction(composer, 'attach');
+  const send = findAction(composer, 'send');
+
+  if (placement === 'after-attach' && attach) {
+    return createActionAnchor(inputElement, attach, 'after');
+  }
+  if (placement === 'before-send' && send) {
+    return createActionAnchor(inputElement, send, 'before');
+  }
+  if (placement === 'composer-end') {
+    return appendAnchor(inputElement, composer);
+  }
+
+  if (send) return createActionAnchor(inputElement, send, 'before');
+  if (attach) return createActionAnchor(inputElement, attach, 'after');
+  return appendAnchor(inputElement, composer);
+}
+
+export const DOCKING_STRATEGIES = {
+  chatgpt: platformStrategy('chatgpt', (inputElement) => {
+    const composer = findComposerRoot(inputElement);
+    if (!composer) return null;
+    const model = findAction(composer, 'model');
+    if (model) return createActionAnchor(inputElement, model, 'before');
+    const send = findAction(composer, 'send');
+    if (send) return createActionAnchor(inputElement, send, 'before');
+    const attach = findAction(composer, 'attach');
+    return attach ? createActionAnchor(inputElement, attach, 'after') : null;
+  }),
+
+  claude: platformStrategy('claude', (inputElement) => {
+    const composer = findComposerRoot(inputElement);
+    if (!composer) return null;
+    const attach = findAction(composer, 'attach');
+    if (attach) return createActionAnchor(inputElement, attach, 'after');
+    const model = findAction(composer, 'model');
+    if (model) return createActionAnchor(inputElement, model, 'before');
+    const send = findAction(composer, 'send');
+    return send ? createActionAnchor(inputElement, send, 'before') : null;
+  }),
+
+  gemini: platformStrategy('gemini', (inputElement) => {
+    const composer = findComposerRoot(inputElement);
+    if (!composer) return null;
+    const model = findAction(composer, 'model');
+    if (model) return createActionAnchor(inputElement, model, 'before');
+    const send = findAction(composer, 'send');
+    if (send) return createActionAnchor(inputElement, send, 'before');
+    const attach = findAction(composer, 'attach');
+    return attach ? createActionAnchor(inputElement, attach, 'after') : null;
+  }),
+
+  perplexity: platformStrategy('perplexity', (inputElement) => {
+    const composer = findComposerRoot(inputElement);
+    if (!composer) return null;
+    const attach = findAction(composer, 'attach');
+    if (attach) return createActionAnchor(inputElement, attach, 'after');
+    const sources = findAction(composer, 'sources');
+    if (sources) return createActionAnchor(inputElement, sources, 'before');
+    const send = findAction(composer, 'send');
+    return send ? createActionAnchor(inputElement, send, 'before') : null;
+  }),
+
+  aistudio: platformStrategy('aistudio', (inputElement) => {
+    const composer = findComposerRoot(inputElement);
+    if (!composer) return null;
+    const attach = findAction(composer, 'attach');
+    if (attach) {
+      return createActionAnchor(inputElement, attach, 'before', {
+        needsWrapper: true,
+        wrapperClass: 'button-wrapper',
+        wrapperTag: 'div'
+      });
+    }
+    const run = findAction(composer, 'send');
+    return run ? createActionAnchor(inputElement, run, 'before') : null;
+  }),
+
+  generic: platformStrategy('generic', genericAnchor),
+
+  universal: platformStrategy('universal', (inputElement, options) =>
+    genericAnchor(inputElement, options)
+  )
 };
 
 export default DOCKING_STRATEGIES;

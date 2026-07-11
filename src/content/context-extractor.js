@@ -5,7 +5,6 @@
 
 import {
   extractKeywords,
-  calculateSimilarity,
   hashString,
   detectIntent
 } from '../shared/utils.js';

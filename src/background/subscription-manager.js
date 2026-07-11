@@ -1,6 +1,5 @@
 import browserCompat from '../shared/browser-compat.js';
 import { SUBSCRIPTION_TYPES, STORAGE_KEYS, GEMINI_API } from '../shared/constants.js';
-import { TEST_MODE_ENABLED, BYPASS_API_VALIDATION, VERBOSE_LOGGING } from '../shared/test-config.js';
 
 class SubscriptionManager {
   constructor() {
@@ -88,21 +87,15 @@ class SubscriptionManager {
   }
 
   async validateGeminiKey(apiKey) {
-    if (TEST_MODE_ENABLED && BYPASS_API_VALIDATION) {
-      console.warn('[APE] ⚠️ TEST MODE: Bypassing API key validation');
-      return true;
-    }
-
-    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
     console.log('[APE] Validating API key with model:', GEMINI_API.MODEL);
-    if (VERBOSE_LOGGING) {
-      console.log('[APE] API Key (first 10 chars):', apiKey.substring(0, 10));
-    }
-
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'Test' }] }],
           generationConfig: { maxOutputTokens: 10 }
@@ -110,13 +103,6 @@ class SubscriptionManager {
       });
 
       console.log('[APE] API validation response status:', response.status);
-      if (VERBOSE_LOGGING) {
-        console.log('[APE] Response headers:', {
-          contentType: response.headers.get('content-type'),
-          contentLength: response.headers.get('content-length')
-        });
-      }
-
       if (response.status !== 200 && response.status !== 429) {
         const errorText = await response.text();
         console.error('[APE] API validation failed. Status:', response.status);
@@ -125,11 +111,10 @@ class SubscriptionManager {
           const errorJson = JSON.parse(errorText);
           if (errorJson.error) {
             console.error('[APE] Error details:', errorJson.error.message);
-            if (VERBOSE_LOGGING) {
-              console.error('[APE] Full error object:', JSON.stringify(errorJson.error, null, 2));
-            }
           }
-        } catch (_) {}
+        } catch (_) {
+          // A non-JSON error body is still represented by the HTTP status.
+        }
       }
 
       const isValid = response.status === 200 || response.status === 429;
@@ -146,13 +131,6 @@ class SubscriptionManager {
         }
       } else {
         console.error('[APE] API key validation error:', error);
-        if (VERBOSE_LOGGING) {
-          console.error('[APE] Error details:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          });
-        }
       }
       return false;
     }

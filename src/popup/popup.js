@@ -4,8 +4,13 @@
  */
 
 import browserCompat from '../shared/browser-compat.js';
-import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../shared/constants.js';
-import { renderStaticHTML } from '../shared/utils.js';
+import { DEFAULT_SETTINGS, SITE_PLACEMENTS } from '../shared/constants.js';
+import { matchesHostname, renderStaticHTML } from '../shared/utils.js';
+import {
+  isConfigurableUrl,
+  resolveSitePreferences,
+  upsertSitePreference
+} from '../shared/site-preferences.js';
 
 class PopupController {
   constructor() {
@@ -112,6 +117,10 @@ class PopupController {
     const contextWindow = document.getElementById('context-window');
     contextWindow?.addEventListener('input', () => {
       this.checkForChanges();
+    });
+
+    document.getElementById('site-placement')?.addEventListener('change', (event) => {
+      this.changeCurrentSitePlacement(event.target.value);
     });
 
     // Load current settings into form
@@ -445,8 +454,10 @@ class PopupController {
     try {
       await browserCompat.storageSet({ managedSites: this.managedSites });
       console.log('[APE Popup] Saved managed sites:', this.managedSites);
+      return true;
     } catch (error) {
       console.error('[APE Popup] Failed to save managed sites:', error);
+      return false;
     }
   }
 
@@ -456,22 +467,23 @@ class PopupController {
   updateSiteManagement() {
     if (!this.currentTab?.url) return;
 
-    const url = new URL(this.currentTab.url);
-    const hostname = url.hostname;
+    const configurable = isConfigurableUrl(this.currentTab.url);
+    const url = configurable ? new URL(this.currentTab.url) : null;
+    const hostname = url?.hostname || '';
 
     // Update current site card
     const siteNameElem = document.getElementById('current-site-name');
     const siteUrlElem = document.getElementById('current-site-url');
     const toggleBtn = document.getElementById('toggle-site-btn');
+    const placementSelect = document.getElementById('site-placement');
 
-    if (hostname && !hostname.startsWith('chrome') && !hostname.startsWith('about')) {
-      const isNativePlatform = this.isNativePlatform(hostname);
-      const siteConfig = this.managedSites.find(s => s.hostname === hostname);
-      
-      // For native platforms: default enabled unless explicitly disabled
-      // For custom sites: default disabled unless explicitly enabled
-      const defaultState = isNativePlatform ? true : false;
-      const isEnabled = siteConfig?.enabled ?? defaultState;
+    if (configurable) {
+      const preferences = resolveSitePreferences({
+        hostname,
+        title: this.currentTab.title || '',
+        managedSites: this.managedSites
+      });
+      const isEnabled = preferences.enabled;
 
       siteNameElem.textContent = this.getFriendlyName(hostname);
       siteUrlElem.textContent = hostname;
@@ -482,12 +494,20 @@ class PopupController {
 
       // Update event listener
       toggleBtn.onclick = () => this.toggleCurrentSite();
+      if (placementSelect) {
+        placementSelect.disabled = false;
+        placementSelect.value = preferences.placement;
+      }
     } else {
       siteNameElem.textContent = 'Not available on this page';
       siteUrlElem.textContent = hostname || '—';
       toggleBtn.disabled = true;
       toggleBtn.classList.remove('enabled');
       toggleBtn.querySelector('.toggle-site-text').textContent = 'Not Available';
+      if (placementSelect) {
+        placementSelect.disabled = true;
+        placementSelect.value = SITE_PLACEMENTS.AUTO;
+      }
     }
 
     // Update managed sites list
@@ -507,18 +527,18 @@ class PopupController {
       'aistudio.google.com'
     ];
     
-    return nativeDomains.some(domain => hostname.includes(domain));
+    return nativeDomains.some(domain => matchesHostname(hostname, domain));
   }
 
   /**
    * Get friendly name for hostname
    */
   getFriendlyName(hostname) {
-    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) return 'ChatGPT';
-    if (hostname.includes('claude.ai')) return 'Claude';
-    if (hostname.includes('gemini.google.com')) return 'Gemini';
-    if (hostname.includes('perplexity.ai')) return 'Perplexity';
-    if (hostname.includes('aistudio.google.com')) return 'Google AI Studio';
+    if (matchesHostname(hostname, 'chatgpt.com') || matchesHostname(hostname, 'chat.openai.com')) return 'ChatGPT';
+    if (matchesHostname(hostname, 'claude.ai')) return 'Claude';
+    if (matchesHostname(hostname, 'gemini.google.com')) return 'Gemini';
+    if (matchesHostname(hostname, 'perplexity.ai')) return 'Perplexity';
+    if (matchesHostname(hostname, 'aistudio.google.com')) return 'Google AI Studio';
     return hostname;
   }
 
@@ -531,28 +551,60 @@ class PopupController {
     const url = new URL(this.currentTab.url);
     const hostname = url.hostname;
 
-    const isNativePlatform = this.isNativePlatform(hostname);
-    const existingIndex = this.managedSites.findIndex(s => s.hostname === hostname);
-    
-    if (existingIndex >= 0) {
-      // Toggle existing site
-      this.managedSites[existingIndex].enabled = !this.managedSites[existingIndex].enabled;
-    } else {
-      // Add new site with opposite of default state
-      // Native platforms default to enabled, so add as disabled
-      // Custom sites default to disabled, so add as enabled
-      this.managedSites.push({
-        hostname,
-        name: this.getFriendlyName(hostname),
-        enabled: !isNativePlatform, // Toggle the default
-        addedAt: Date.now()
-      });
-    }
+    const preferences = resolveSitePreferences({
+      hostname,
+      title: this.currentTab.title || '',
+      managedSites: this.managedSites
+    });
+    const previousSites = this.managedSites;
+    this.managedSites = upsertSitePreference(
+      this.managedSites,
+      hostname,
+      { enabled: !preferences.enabled },
+      this.getFriendlyName(hostname)
+    );
 
-    await this.saveManagedSites();
+    const saved = await this.saveManagedSites();
+    if (!saved) {
+      this.managedSites = previousSites;
+      this.updateSiteManagement();
+      return;
+    }
     this.updateSiteManagement();
 
     // Reload the tab to apply changes
+    try {
+      await chrome.tabs.reload(this.currentTab.id);
+    } catch (error) {
+      console.log('[APE Popup] Failed to reload tab:', error);
+    }
+  }
+
+  async changeCurrentSitePlacement(placement) {
+    if (!this.currentTab?.url || !isConfigurableUrl(this.currentTab.url)) return;
+    if (!Object.values(SITE_PLACEMENTS).includes(placement)) return;
+
+    const hostname = new URL(this.currentTab.url).hostname;
+    const preferences = resolveSitePreferences({
+      hostname,
+      title: this.currentTab.title || '',
+      managedSites: this.managedSites
+    });
+    const previousSites = this.managedSites;
+    this.managedSites = upsertSitePreference(
+      this.managedSites,
+      hostname,
+      { enabled: preferences.enabled, placement },
+      this.getFriendlyName(hostname)
+    );
+
+    const saved = await this.saveManagedSites();
+    if (!saved) {
+      this.managedSites = previousSites;
+      this.updateSiteManagement();
+      return;
+    }
+    this.updateSiteManagement();
     try {
       await chrome.tabs.reload(this.currentTab.id);
     } catch (error) {
@@ -564,8 +616,14 @@ class PopupController {
    * Remove a managed site
    */
   async removeManagedSite(hostname) {
+    const previousSites = this.managedSites;
     this.managedSites = this.managedSites.filter(s => s.hostname !== hostname);
-    await this.saveManagedSites();
+    const saved = await this.saveManagedSites();
+    if (!saved) {
+      this.managedSites = previousSites;
+      this.updateSiteManagement();
+      return;
+    }
     this.updateSiteManagement();
 
     // If removing current site, reload the tab

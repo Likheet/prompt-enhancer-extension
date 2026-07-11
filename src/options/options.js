@@ -4,9 +4,8 @@
  */
 
 import EnhancementPresets from '../content/enhancement-presets.js';
-import { DEFAULT_SETTINGS, ENHANCEMENT_PRESETS, STORAGE_KEYS } from '../shared/constants.js';
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from '../shared/constants.js';
 import browserCompat from '../shared/browser-compat.js';
-import { TEST_MODE_ENABLED, HARDCODED_API_KEY, VERBOSE_LOGGING } from '../shared/test-config.js';
 import { renderStaticHTML } from '../shared/utils.js';
 
 class OptionsPage {
@@ -14,6 +13,7 @@ class OptionsPage {
     this.presets = new EnhancementPresets();
     this.settings = null;
     this.usageStats = null;
+    this.subscriptionInfo = null;
 
     this.init();
   }
@@ -23,6 +23,7 @@ class OptionsPage {
 
     // Load current settings
     await this.loadSettings();
+    await this.loadSubscriptionInfo();
 
     // Populate UI
     this.populateEnhancementTypes();
@@ -41,13 +42,24 @@ class OptionsPage {
    */
   async loadSettings() {
     try {
-      const result = await browserCompat.storage_get([STORAGE_KEYS.SETTINGS]);
+      const result = await browserCompat.storageGet([STORAGE_KEYS.SETTINGS]);
       const storedSettings = result[STORAGE_KEYS.SETTINGS] || {};
       this.settings = { ...DEFAULT_SETTINGS, ...storedSettings };
-      console.log('[Options] Settings loaded:', this.settings);
+      console.log('[Options] Settings loaded');
     } catch (error) {
       console.error('[Options] Failed to load settings:', error);
       this.settings = { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  async loadSubscriptionInfo() {
+    try {
+      this.subscriptionInfo = await browserCompat.sendMessage({
+        action: 'getSubscriptionInfo'
+      });
+    } catch (error) {
+      console.error('[Options] Failed to load subscription status:', error);
+      this.subscriptionInfo = { type: 'free', active: true, hasApiKey: false };
     }
   }
 
@@ -56,7 +68,7 @@ class OptionsPage {
    */
   async loadUsageStats() {
     try {
-      const result = await browserCompat.storage_get([STORAGE_KEYS.USAGE_STATS]);
+      const result = await browserCompat.storageGet([STORAGE_KEYS.USAGE_STATS]);
       this.usageStats = result[STORAGE_KEYS.USAGE_STATS] || {
         totalEnhancements: 0,
         byokEnhancements: 0
@@ -184,18 +196,19 @@ class OptionsPage {
     // API key
     const apiKeyInput = document.getElementById('gemini-api-key');
     if (apiKeyInput) {
-      apiKeyInput.value = this.settings.geminiKey || '';
+      const hasBYOK = this.subscriptionInfo?.type === 'byok' &&
+        this.subscriptionInfo?.active &&
+        this.subscriptionInfo?.hasApiKey;
+      const legacyKey = this.settings.geminiKey || this.settings.geminiApiKey || '';
 
-      // TEST MODE: Pre-fill with hardcoded key if in test mode
-      if (TEST_MODE_ENABLED && !this.settings.geminiKey) {
-        console.log('[Options TEST MODE] Pre-filling with hardcoded API key');
-        apiKeyInput.value = HARDCODED_API_KEY;
-        this.settings.geminiKey = HARDCODED_API_KEY;
+      apiKeyInput.value = hasBYOK ? '' : legacyKey;
+      if (hasBYOK && this.subscriptionInfo.apiKeyMasked) {
+        apiKeyInput.placeholder = `Saved key (${this.subscriptionInfo.apiKeyMasked})`;
       }
 
       // Show/hide remove button
       const removeBtn = document.getElementById('remove-api-key');
-      if (this.settings.geminiKey) {
+      if (hasBYOK) {
         removeBtn.style.display = 'inline-block';
         this.updateSubscriptionStatus(true);
       } else {
@@ -204,14 +217,6 @@ class OptionsPage {
       }
     }
 
-    // Add test mode indicator if enabled
-    if (TEST_MODE_ENABLED) {
-      const testModeIndicator = document.createElement('div');
-      testModeIndicator.style.cssText = 'background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 4px; border: 1px solid #ffc107; font-weight: bold; color: #856404;';
-      testModeIndicator.textContent = '⚠️ TEST MODE ENABLED - Using hardcoded API key for testing';
-      const container = document.querySelector('.settings-container') || document.body;
-      container.insertBefore(testModeIndicator, container.firstChild);
-    }
   }
 
   /**
@@ -250,7 +255,7 @@ class OptionsPage {
     }
 
     // Keyboard shortcuts
-    ['shortcut-1', 'shortcut-2', 'shortcut-3'].forEach((id, index) => {
+    ['shortcut-1', 'shortcut-2', 'shortcut-3'].forEach((id) => {
       const select = document.getElementById(id);
       if (select) {
         select.addEventListener('change', () => {
@@ -458,22 +463,30 @@ class OptionsPage {
     saveBtn.disabled = true;
 
     try {
-      // Test the API key
-      const isValid = await this.validateGeminiKey(apiKey);
+      const response = await browserCompat.sendMessage({
+        action: 'activateBYOK',
+        data: { apiKey }
+          });
 
-      if (isValid) {
-        this.settings.geminiKey = apiKey;
-        this.settings.subscriptionType = 'byok';
+          if (response?.success) {
+            delete this.settings.geminiKey;
+            delete this.settings.geminiApiKey;
+            this.settings.subscriptionType = 'byok';
 
-        await this.saveSettings();
+            await this.saveSettings();
+            await this.loadSubscriptionInfo();
 
-        // Update UI
-        document.getElementById('remove-api-key').style.display = 'inline-block';
+            // Update UI
+            input.value = '';
+            input.placeholder = this.subscriptionInfo?.apiKeyMasked
+              ? `Saved key (${this.subscriptionInfo.apiKeyMasked})`
+              : 'API key saved';
+            document.getElementById('remove-api-key').style.display = 'inline-block';
         this.updateSubscriptionStatus(true);
 
         this.showStatus('API key saved successfully! 🎉', 'success');
       } else {
-        this.showStatus('API key validation failed. Please check your key.', 'error');
+        this.showStatus(response?.error || 'API key validation failed. Please check your key.', 'error');
       }
     } catch (error) {
       console.error('[Options] API key validation error:', error);
@@ -485,33 +498,6 @@ class OptionsPage {
   }
 
   /**
-   * Validate Gemini API key
-   */
-  async validateGeminiKey(apiKey) {
-    try {
-      const response = await fetch(
-        `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: 'Test' }]
-            }]
-          })
-        }
-      );
-
-      return response.ok || response.status === 429;
-    } catch (error) {
-      console.error('[Options] API key validation error:', error);
-      return false;
-    }
-  }
-
-  /**
    * Handle remove API key
    */
   async handleRemoveApiKey() {
@@ -519,13 +505,27 @@ class OptionsPage {
       return;
     }
 
-    this.settings.geminiKey = '';
-    this.settings.subscriptionType = 'free';
+    try {
+      const response = await browserCompat.sendMessage({ action: 'deactivateBYOK' });
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to deactivate BYOK');
+      }
 
-    await this.saveSettings();
+          delete this.settings.geminiKey;
+          delete this.settings.geminiApiKey;
+          this.settings.subscriptionType = 'free';
+          await this.saveSettings();
+          this.subscriptionInfo = { type: 'free', active: true, hasApiKey: false };
+    } catch (error) {
+      console.error('[Options] Failed to remove API key:', error);
+      this.showStatus('Failed to remove API key', 'error');
+      return;
+    }
 
-    // Update UI
-    document.getElementById('gemini-api-key').value = '';
+        // Update UI
+        const apiKeyInput = document.getElementById('gemini-api-key');
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'AIza...';
     document.getElementById('remove-api-key').style.display = 'none';
     this.updateSubscriptionStatus(false);
 
@@ -573,22 +573,10 @@ class OptionsPage {
    */
   async saveSettings() {
     try {
-      await browserCompat.storage_set({
+      await browserCompat.storageSet({
         [STORAGE_KEYS.SETTINGS]: this.settings
       });
-
-      // Also notify background script to update subscription
-      if (this.settings.geminiKey) {
-        await browserCompat.sendMessage({
-          action: 'updateSubscription',
-          data: {
-            type: 'byok',
-            apiKey: this.settings.geminiKey
-          }
-        });
-      }
-
-      console.log('[Options] Settings saved:', this.settings);
+      console.log('[Options] Settings saved');
     } catch (error) {
       console.error('[Options] Failed to save settings:', error);
       this.showStatus('Failed to save settings', 'error');

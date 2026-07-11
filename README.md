@@ -51,13 +51,19 @@ Choose the perfect enhancement style for your needs:
    cd prompt-enhancer-extension
    ```
 
-2. **Load in Chrome**:
+2. **Install dependencies and build the extension**:
+   ```bash
+   npm install
+   npm run build
+   ```
+
+3. **Load in Chrome**:
    - Open Chrome and navigate to `chrome://extensions/`
    - Enable "Developer mode" (toggle in top right)
    - Click "Load unpacked"
    - Select the `prompt-enhancer-extension` directory
 
-3. **Verify Installation**:
+4. **Verify Installation**:
    - Extension icon should appear in toolbar
    - Visit ChatGPT or Claude to see it in action
 
@@ -176,9 +182,10 @@ Access full settings: **Right-click extension icon → Options**
 ### Platform Support
 - ✅ **ChatGPT** (chat.openai.com, chatgpt.com)
 - ✅ **Claude AI** (claude.ai)
-- ⏳ **Gemini** (coming soon)
-- ⏳ **Poe** (coming soon)
-- ⏳ **Perplexity** (coming soon)
+- ✅ **Gemini** (gemini.google.com)
+- ✅ **Perplexity** (perplexity.ai)
+- ✅ **Google AI Studio** (aistudio.google.com)
+- 🧪 **Other AI sites** through the generic adapter or per-site enablement
 
 ### Usage Statistics
 - **Total Enhancements**: All-time count
@@ -248,7 +255,8 @@ prompt-enhancer-extension/
 │   ├── icons/                        # Extension icons
 │   └── styles/
 │       └── inline-ui.css             # Inline UI styles
-└── TESTING.md                        # Comprehensive testing guide
+├── tests/                            # Unit, contract, security, and browser smoke tests
+└── TESTING.md                        # Testing guide
 ```
 
 ---
@@ -257,7 +265,7 @@ prompt-enhancer-extension/
 
 - **No Data Collection**: We don't collect, store, or transmit your prompts or conversations
 - **Local Processing**: Free tier enhancement happens entirely in your browser
-- **Secure Storage**: API keys stored locally using Chrome's secure storage API
+- **Local Storage**: API keys remain in browser extension storage and are masked in the UI
 - **HTTPS Only**: All API calls use encrypted connections
 - **No Remote Code**: No code is loaded from external servers
 - **Open Source**: Full source code available for audit
@@ -273,13 +281,13 @@ prompt-enhancer-extension/
 ## 🚀 Roadmap
 
 ### v0.2.0 (Coming Soon)
-- [ ] Gemini web app support
+- [ ] Additional platform-specific adapter hardening
 - [ ] Diff viewer (show changes made)
 - [ ] Enhancement history
 - [ ] Export/import settings
 
 ### v0.3.0
-- [ ] Poe and Perplexity support
+- [ ] Native Poe support
 - [ ] Firefox extension variant
 - [ ] Prompt templates library
 - [ ] Custom platform configuration tool
@@ -317,6 +325,9 @@ npm test
 
 # Run linter
 npm run lint
+
+# Build and run the Chromium extension smoke test
+npm run test:e2e
 ```
 
 See [TESTING.md](./TESTING.md) for comprehensive testing guide.
@@ -340,7 +351,7 @@ See [TESTING.md](./TESTING.md) for comprehensive testing guide.
 - Adapts to UI changes automatically
 
 ### API Usage (BYOK)
-- **Provider**: Google Gemini (gemini-pro model)
+- **Provider**: Google Gemini (`gemini-3.5-flash`)
 - **Rate Limits**: Governed by your Google account
 - **Pricing**: See [Google's pricing](https://ai.google.dev/pricing)
 - **Fallback**: Automatic fallback to rule-based on errors

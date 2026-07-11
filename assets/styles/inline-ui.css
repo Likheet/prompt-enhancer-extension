@@ -8,58 +8,38 @@
 
 /* Inline enhance button */
 .ape-inline-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
   border: none;
-  border-radius: 8px;
-  background: transparent !important;
-  color: transparent;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--ape-control-color, #5f6368);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: none !important;
-  z-index: 1000;
-  opacity: 0;
-  transform: scale(0.8);
-  animation: ape-button-appear 0.3s ease-out 0.5s forwards;
-  padding: 0 !important;
-}
-
-.ape-inline-button-chatgpt {
-  position: relative !important;
-  left: auto !important;
-  right: auto !important;
-  top: auto !important;
-  bottom: auto !important;
-  z-index: 10 !important;
+  transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease;
   box-shadow: none;
-  flex: 0 0 auto;
-  margin-right: 4px;
-}
-
-@keyframes ape-button-appear {
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  z-index: auto;
+  opacity: 1;
+  padding: 0 !important;
+  vertical-align: middle;
 }
 
 .ape-inline-button:hover {
-  transform: scale(1.05);
-  box-shadow: none !important;
-  background: transparent !important;
+  background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
 .ape-inline-button:active {
-  transform: scale(0.95);
+  background-color: color-mix(in srgb, currentColor 16%, transparent) !important;
 }
 
 .ape-inline-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-  transform: scale(1);
 }
 
 .ape-inline-button.ape-processing {
@@ -71,6 +51,10 @@
 .ape-icon-enhance,
 .ape-spinner-inline {
   display: block;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  pointer-events: none;
 }
 
 .ape-hidden {
@@ -165,13 +149,14 @@
 
 /* Platform-specific adjustments can be added here if needed */
 
-.ape-perplexity-button {
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  aspect-ratio: 1 !important;
-  border-radius: 6px !important;
-  padding: 0 !important;
+.ape-chatgpt-button,
+.ape-claude-button,
+.ape-gemini-button,
+.ape-perplexity-button,
+.ape-aistudio-button,
+.ape-generic-button,
+.ape-universal-button {
+  border-radius: 9999px !important;
 }
 
 /* ===========================

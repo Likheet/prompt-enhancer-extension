@@ -3,6 +3,20 @@
  */
 
 /**
+ * Match a hostname to an exact domain or one of its subdomains.
+ */
+export function matchesHostname(hostname, domain) {
+  if (typeof hostname !== 'string' || typeof domain !== 'string') return false;
+
+  const normalizedHostname = hostname.trim().toLowerCase().replace(/\.$/, '');
+  const normalizedDomain = domain.trim().toLowerCase().replace(/^\./, '').replace(/\.$/, '');
+
+  if (!normalizedHostname || !normalizedDomain) return false;
+  return normalizedHostname === normalizedDomain ||
+    normalizedHostname.endsWith(`.${normalizedDomain}`);
+}
+
+/**
  * Throttle function execution
  */
 export function throttle(func, wait) {

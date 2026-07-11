@@ -4,7 +4,7 @@
  */
 
 import { PLATFORMS } from '../shared/constants.js';
-import { throttle, waitForElement } from '../shared/utils.js';
+import { matchesHostname, throttle } from '../shared/utils.js';
 
 class ResilientDOMObserver {
   constructor() {
@@ -33,23 +33,23 @@ class ResilientDOMObserver {
     const hostname = window.location.hostname.toLowerCase();
     console.log('[APE] Detecting platform for hostname:', hostname);
 
-    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
+    if (matchesHostname(hostname, 'chatgpt.com') || matchesHostname(hostname, 'chat.openai.com')) {
       console.log('[APE] Platform detected: ChatGPT');
       return PLATFORMS.CHATGPT;
     }
-    if (hostname.includes('claude.ai')) {
+    if (matchesHostname(hostname, 'claude.ai')) {
       console.log('[APE] Platform detected: Claude');
       return PLATFORMS.CLAUDE;
     }
-    if (hostname.includes('gemini.google.com')) {
+    if (matchesHostname(hostname, 'gemini.google.com')) {
       console.log('[APE] Platform detected: Gemini');
       return PLATFORMS.GEMINI;
     }
-    if (hostname.includes('perplexity.ai')) {
+    if (matchesHostname(hostname, 'perplexity.ai')) {
       console.log('[APE] Platform detected: Perplexity');
       return PLATFORMS.PERPLEXITY;
     }
-    if (hostname.includes('aistudio.google.com')) {
+    if (matchesHostname(hostname, 'aistudio.google.com')) {
       console.log('[APE] Platform detected: AI Studio');
       return PLATFORMS.AI_STUDIO;
     }
@@ -65,6 +65,8 @@ class ResilientDOMObserver {
     const selectors = {
       [PLATFORMS.CHATGPT]: {
         inputArea: [
+          'form[data-type="unified-composer"] #prompt-textarea',
+          '#prompt-textarea.ProseMirror[contenteditable="true"]',
           'textarea[id="prompt-textarea"]',
           'textarea[data-id]',
           'textarea[placeholder*="Message"]',
@@ -106,6 +108,9 @@ class ResilientDOMObserver {
 
       [PLATFORMS.CLAUDE]: {
         inputArea: [
+          '[data-testid="chat-input-grid-container"] .ProseMirror[contenteditable="true"]',
+          '[data-testid="chat-input-grid-area"] .ProseMirror[contenteditable="true"]',
+          '.ProseMirror[contenteditable="true"][data-placeholder]',
           'div[contenteditable="true"][data-placeholder]',
           'div.ProseMirror',
           'div[contenteditable="true"]',
@@ -146,9 +151,10 @@ class ResilientDOMObserver {
 
       [PLATFORMS.GEMINI]: {
         inputArea: [
-          'rich-textarea[placeholder*="Enter a prompt"]',
-          'rich-textarea',
+          '.ql-editor[contenteditable="true"][role="textbox"]',
+          'div[contenteditable="true"][aria-label*="prompt" i]',
           'div[contenteditable="true"][role="textbox"]',
+          'rich-textarea[placeholder*="Enter a prompt"] [contenteditable="true"]',
           'textarea[placeholder*="Enter"]',
           '.ql-editor[contenteditable="true"]'
         ],
@@ -182,6 +188,7 @@ class ResilientDOMObserver {
 
       [PLATFORMS.PERPLEXITY]: {
         inputArea: [
+          '#ask-input[contenteditable="true"]',
           'textarea[placeholder*="Ask anything"]',
           'textarea[placeholder*="Type @"]',
           'textarea',
@@ -214,10 +221,12 @@ class ResilientDOMObserver {
 
       [PLATFORMS.AI_STUDIO]: {
         inputArea: [
-          'div[contenteditable="true"]',
+          '[contenteditable="true"][aria-label*="prompt" i]',
+          'textarea[placeholder*="Type something" i]',
           'textarea[placeholder*="Enter prompt"]',
           'textarea[placeholder*="Type prompt"]',
           'textarea',
+          'div[contenteditable="true"]',
           'div[role="textbox"]'
         ],
         sendButton: [
@@ -251,9 +260,11 @@ class ResilientDOMObserver {
       [PLATFORMS.GENERIC]: {
         inputArea: [
           'textarea',
+          '[contenteditable="true"][role="textbox"]',
           '[contenteditable="true"]',
-          'input[type="text"]',
-          '[role="textbox"]'
+          '[role="textbox"]',
+          '[role="combobox"]',
+          'input[type="text"]:not([name*="search"]):not([id*="search"])' // Exclude obvious search bars
         ],
         sendButton: [
           'button[type="submit"]',
@@ -330,6 +341,46 @@ class ResilientDOMObserver {
     return null;
   }
 
+
+
+  /**
+   * Deeply search for element across Shadow DOMs
+   * This is the "Nuclear" option for finding inputs in obscure wrappers
+   */
+  deepQuerySelector(selector, root = document.body) {
+    if (!root) return null;
+
+    // 1. Try direct query first (fastest)
+    const directMatch = root.querySelector(selector);
+    if (directMatch && this.validateElement(directMatch)) return directMatch;
+
+    // 2. TreeWalker to traverse Shadow Roots
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode: (node) => {
+          if (node.shadowRoot) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        }
+      }
+    );
+
+    let currentNode = walker.currentNode;
+    while (currentNode) {
+      if (currentNode.shadowRoot) {
+        const match = this.deepQuerySelector(selector, currentNode.shadowRoot);
+        if (match) return match;
+      }
+      currentNode = walker.nextNode();
+    }
+
+    return null;
+  }
+
+  /**
+   * Find element matching ANY of the selectors, with deep search support
+   */
   findElement(selectorArray) {
     if (!Array.isArray(selectorArray)) return null;
 
@@ -338,37 +389,94 @@ class ResilientDOMObserver {
       return activeMatch;
     }
 
-    let preferredCandidate = null;
-    let lastValidCandidate = null;
+    let bestCandidate = null;
+    let bestScore = -Infinity;
     const seen = new Set();
 
-    for (const selector of selectorArray) {
+    // Strategy 1: Fast Global Search (Standard)
+    for (let selectorIndex = 0; selectorIndex < selectorArray.length; selectorIndex += 1) {
+      const selector = selectorArray[selectorIndex];
       if (!selector) continue;
 
-      let nodeList;
       try {
-        nodeList = document.querySelectorAll(selector);
-      } catch (error) {
-        // Invalid selector, skip to next
-        continue;
-      }
+        const candidates = document.querySelectorAll(selector);
+        for (const element of candidates) {
+          if (!element || seen.has(element)) continue;
+          seen.add(element);
 
-      nodeList.forEach((element) => {
-        if (!element || seen.has(element)) return;
-        seen.add(element);
+          if (!this.validateElement(element)) continue;
 
-        if (!this.validateElement(element)) return;
-
-        const activeElement = document.activeElement;
-        if (activeElement && (element === activeElement || element.contains(activeElement))) {
-          preferredCandidate = element;
+          const score = this.scoreInputCandidate(element, selectorIndex, selectorArray.length);
+          if (score > bestScore) {
+            bestCandidate = element;
+            bestScore = score;
+          }
         }
-
-        lastValidCandidate = element;
-      });
+      } catch (e) { continue; }
     }
 
-    return preferredCandidate || lastValidCandidate;
+    if (bestCandidate) return bestCandidate;
+
+    // Strategy 2: Deep Search (Nuclear) - Only for Generic platform
+    // This allows us to peer into Shadow DOMs (e.g. Kimi.ai might use Shadow DOM)
+    if (this.platform === PLATFORMS.GENERIC) {
+      console.log('[APE] Standard search failed on Generic platform, attempting Deep Search...');
+
+      for (const selector of selectorArray) {
+        if (!selector) continue;
+        const deepMatch = this.deepQuerySelector(selector);
+        if (deepMatch) {
+          console.log('[APE] Deep Search found input:', deepMatch);
+          return deepMatch;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  scoreInputCandidate(element, selectorIndex, selectorCount) {
+    let score = (selectorCount - selectorIndex) * 12;
+    const tagName = element.tagName?.toLowerCase();
+    const role = element.getAttribute?.('role') || '';
+    const contentEditable = element.getAttribute?.('contenteditable') === 'true';
+    const text = [
+      element.id,
+      element.className,
+      element.getAttribute?.('name'),
+      element.getAttribute?.('aria-label'),
+      element.getAttribute?.('placeholder'),
+      element.getAttribute?.('data-placeholder'),
+      role
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (tagName === 'textarea') score += 35;
+    if (contentEditable) score += 30;
+    if (role === 'textbox') score += 20;
+    if (/prompt|message|reply|ask|chat/.test(text)) score += 45;
+    if (/search|newsletter|email|password|login|sign[ -]?in/.test(text)) score -= 140;
+    if (role === 'searchbox') score -= 180;
+    if (element.closest('header, nav, [role="navigation"], [role="search"]')) score -= 140;
+
+    const composer = element.closest(
+      'form, fieldset, [data-testid*="composer" i], [data-testid*="chat-input" i], [data-testid*="query-box" i], [class*="composer" i], [class*="prompt-input" i], [class*="chat-input" i], [class*="query-box" i]'
+    );
+    if (composer) {
+      score += 55;
+      try {
+        if (composer.querySelector(
+          'button[type="submit"], [data-testid*="send" i], [aria-label*="send" i], [aria-label*="submit" i], [aria-label*="attach" i], [aria-label*="upload" i]'
+        )) score += 60;
+      } catch (_error) {
+        // Scoring is advisory; invalid host markup should not stop discovery.
+      }
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width >= 180) score += 15;
+    if (rect.height >= 32) score += 10;
+    if (rect.bottom >= window.innerHeight * 0.45) score += 10;
+    return score;
   }
 
   /**
@@ -408,21 +516,6 @@ class ResilientDOMObserver {
       this.validateElement(this.inputElement) &&
       this.matchesAnySelector(this.inputElement, this.selectors.inputArea)) {
       return this.inputElement;
-    }
-
-    for (const selector of this.selectors.inputArea) {
-      try {
-        const candidate = await waitForElement(selector, 3000);
-        if (!candidate) continue;
-
-        const resolved = this.findElement(this.selectors.inputArea) || candidate;
-        if (resolved && this.validateElement(resolved)) {
-          this.inputElement = resolved;
-          return this.inputElement;
-        }
-      } catch (error) {
-        continue;
-      }
     }
 
     if (!this.missingInputWarned) {
@@ -774,7 +867,7 @@ class ResilientDOMObserver {
       /^(new chat|new thread|delete|edit|copy|share|export)$/i,
       /^(today|yesterday|last week|this month)$/i,
       /^\d+\s*(min|hour|day|week|month)s?\s*ago$/i,
-      /^[0-9\/\-:]+$/,  // Pure dates/times
+      /^[0-9/:-]+$/,  // Pure dates/times
       /^[\d\s]+$/       // Pure numbers
     ];
 

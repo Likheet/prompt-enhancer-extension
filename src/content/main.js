@@ -9,6 +9,7 @@ import PromptEnhancer from './prompt-enhancer.js';
 import InlineUI from './inline-ui.js';
 import KeyboardShortcuts from './keyboard-shortcuts.js';
 import browserCompat from '../shared/browser-compat.js';
+import { resolveSitePreferences } from '../shared/site-preferences.js';
 
 class AIPromptEnhancerExtension {
   constructor() {
@@ -27,16 +28,24 @@ class AIPromptEnhancerExtension {
    */
   destroy() {
     console.log('[APE] Destroying extension instance...');
-    
+
+    if (this.keyboardShortcuts) {
+      this.keyboardShortcuts.destroy();
+      this.keyboardShortcuts = null;
+    }
+
     if (this.inlineUI) {
       this.inlineUI.destroy();
       this.inlineUI = null;
     }
-    
-    this.domObserver = null;
+
+    if (this.domObserver) {
+      this.domObserver.disconnect();
+      this.domObserver = null;
+    }
+
     this.contextExtractor = null;
     this.promptEnhancer = null;
-    this.keyboardShortcuts = null;
     this.initialized = false;
   }
 
@@ -51,9 +60,9 @@ class AIPromptEnhancerExtension {
     try {
       // Check if site is disabled
       const hostname = window.location.hostname;
-      const isDisabled = await this.isSiteDisabled(hostname);
-      
-      if (isDisabled) {
+      const sitePreferences = await this.getSitePreferences(hostname);
+
+      if (!sitePreferences.enabled) {
         console.log('[APE] Extension disabled for this site:', hostname);
         return;
       }
@@ -65,11 +74,11 @@ class AIPromptEnhancerExtension {
         });
       }
 
-      // Additional wait for dynamic content to load
-      await this.waitForPageReady();
-
       // Load settings
-      this.settings = await this.loadSettings();
+      this.settings = {
+        ...(await this.loadSettings()),
+        sitePlacement: sitePreferences.placement
+      };
 
       // Initialize components
       this.domObserver = new ResilientDOMObserver();
@@ -114,53 +123,26 @@ class AIPromptEnhancerExtension {
   }
 
   /**
-   * Wait for page to be ready for manipulation
-   */
-  async waitForPageReady() {
-    return new Promise((resolve) => {
-      // Wait a bit for dynamic content
-      setTimeout(resolve, 2000);
-    });
-  }
-
-  /**
    * Check if site should be enabled
    */
-  async isSiteDisabled(hostname) {
+  async getSitePreferences(hostname) {
     try {
       const result = await browserCompat.storageGet(['managedSites']);
       const managedSites = result.managedSites || [];
-      const siteConfig = managedSites.find(s => hostname.includes(s.hostname));
-      
-      console.log('[APE] Checking site status for:', hostname);
-      console.log('[APE] Managed sites:', managedSites);
-      console.log('[APE] Site config found:', siteConfig);
-      
-      // Check if this is a native platform
-      const nativeDomains = [
-        'chatgpt.com',
-        'chat.openai.com',
-        'claude.ai',
-        'gemini.google.com',
-        'perplexity.ai',
-        'aistudio.google.com'
-      ];
-      const isNativePlatform = nativeDomains.some(domain => hostname.includes(domain));
-      
-      if (siteConfig) {
-        // Explicit configuration exists - use it
-        console.log('[APE] Using explicit config, enabled:', siteConfig.enabled);
-        return !siteConfig.enabled;
-      } else {
-        // No explicit configuration:
-        // - Native platforms: enabled by default
-        // - Custom sites: disabled by default
-        console.log('[APE] No config found, is native platform:', isNativePlatform);
-        return !isNativePlatform;
-      }
+      const preferences = resolveSitePreferences({
+        hostname,
+        title: document.title,
+        managedSites
+      });
+      console.log('[APE] Site preferences:', hostname, preferences);
+      return preferences;
     } catch (error) {
       console.error('[APE] Failed to check site status:', error);
-      return false;
+      return resolveSitePreferences({
+        hostname,
+        title: document.title,
+        managedSites: []
+      });
     }
   }
 
@@ -202,10 +184,10 @@ if (!window.APE_Extension || !window.APE_Extension.initialized) {
   console.log('[APE] Starting new extension instance');
   const extension = new AIPromptEnhancerExtension();
   extension.initialize();
-  
+
   // Export for debugging
   window.APE_Extension = extension;
-  
+
   // Detect extension context invalidation
   try {
     const port = browserCompat.runtime.connect({ name: 'keepalive' });

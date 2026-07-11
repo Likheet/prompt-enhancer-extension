@@ -594,6 +594,45 @@ body::-webkit-scrollbar-thumb:hover {
   opacity: 0.9;
 }
 
+.site-placement-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+}
+
+.site-placement-control span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.site-placement-control strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.site-placement-control small {
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.site-placement-control select {
+  max-width: 150px;
+  padding: 6px 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 11px;
+}
+
 .managed-sites {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
