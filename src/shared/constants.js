@@ -8,11 +8,14 @@ export const PLATFORMS = {
   GEMINI: 'gemini',
   PERPLEXITY: 'perplexity',
   AI_STUDIO: 'aistudio',
+  KIMI: 'kimi',
+  DEEPSEEK: 'deepseek',
   GENERIC: 'generic'
 };
 
 export const SITE_PLACEMENTS = {
   AUTO: 'auto',
+  BEFORE_ATTACH: 'before-attach',
   AFTER_ATTACH: 'after-attach',
   BEFORE_SEND: 'before-send',
   COMPOSER_END: 'composer-end'
@@ -203,7 +206,7 @@ export const SUPPORTED_AI_DOMAINS = [
   'chatpdf.com',           // ChatPDF
 
   // Chinese Platforms
-  'kimi.ai', 'moonshot.cn', // Kimi
+  'kimi.com', 'kimi.ai', 'moonshot.cn', // Kimi
   'yiyan.baidu.com',        // Ernie Bot
   'chatglm.cn',             // ChatGLM
   'doubao.com',             // Doubao (ByteDance)

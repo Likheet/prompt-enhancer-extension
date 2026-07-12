@@ -53,10 +53,10 @@ test('popup control center preserves settings and site workflows', async ({ brow
     await expect(page.locator('[role="tabpanel"]:visible')).toHaveCount(1);
     await expect(page.locator('#header-site-state')).toHaveText('Active on ChatGPT');
     expect(await page.evaluate(() => ({
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
+      width: document.querySelector('.popup-shell').getBoundingClientRect().width,
+      height: document.querySelector('.popup-shell').getBoundingClientRect().height,
       bodyOverflow: getComputedStyle(document.body).overflow
-    }))).toEqual({ width: 420, height: 600, bodyOverflow: 'hidden' });
+    }))).toEqual({ width: 400, height: 500, bodyOverflow: 'hidden' });
 
     await page.locator('#template-structured').check();
     await expect(page.locator('#save-bar')).toBeVisible();
@@ -68,7 +68,7 @@ test('popup control center preserves settings and site workflows', async ({ brow
     await enhanceTab.focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Sites' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('heading', { name: 'Website integration' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sites' })).toBeVisible();
     await expect(page.locator('#current-site-name')).toHaveText('ChatGPT');
 
     await page.locator('#site-placement').selectOption('before-send');
@@ -78,7 +78,6 @@ test('popup control center preserves settings and site workflows', async ({ brow
     })).toBe('before-send');
 
     await page.getByRole('tab', { name: 'API' }).click();
-    await page.getByRole('button', { name: 'Configure' }).click();
     await expect(page.locator('#byok-config')).toBeVisible();
     await page.locator('#gemini-api-key').fill('not-a-real-key');
     await page.getByRole('button', { name: 'Show API key' }).click();

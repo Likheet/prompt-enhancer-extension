@@ -15,7 +15,12 @@ const SELECTORS = {
     '[aria-label*="add file" i]',
     '[aria-label*="add content" i]',
     '[aria-label*="upload" i]',
-    '[aria-label*="insert asset" i]'
+    '[aria-label*="insert asset" i]',
+    '.toolkit-trigger-btn',
+    '[class*="attachment-button" i]',
+    '[class*="attach-button" i]',
+    '[class*="upload-button" i]',
+    '[class*="file-upload" i]'
   ],
   model: [
     '[data-testid="model-selector-dropdown"]',
@@ -78,6 +83,61 @@ function queryAll(selectors, root = document) {
 
 function findAction(root, kind) {
   return queryAll(SELECTORS[kind], root)[0] || null;
+}
+
+function findBottomRightAttachmentCandidate(composer, inputElement) {
+  if (!composer) return null;
+  const composerRect = composer.getBoundingClientRect();
+  const inputRect = inputElement?.getBoundingClientRect?.();
+  const candidates = queryAll([
+    CONTROL_SELECTOR,
+    '[tabindex="0"]',
+    '.icon-button'
+  ], composer).filter((element) => {
+    if (element.classList?.contains('ape-inline-button')) return false;
+    if (inputElement && (element === inputElement || inputElement.contains(element))) return false;
+    const rect = element.getBoundingClientRect();
+    const nearBottom = rect.bottom >= composerRect.bottom - Math.min(90, composerRect.height * 0.5);
+    const belowEditorStart = !inputRect || rect.top >= inputRect.top + Math.min(24, inputRect.height * 0.25);
+    return nearBottom && belowEditorStart && rect.width >= 24 && rect.height >= 24 && rect.height <= 64;
+  });
+
+  const unique = [];
+  for (const candidate of candidates) {
+    const rect = candidate.getBoundingClientRect();
+    const duplicate = unique.some((existing) => {
+      const other = existing.getBoundingClientRect();
+      return Math.abs(rect.left - other.left) < 2 &&
+        Math.abs(rect.top - other.top) < 2 &&
+        Math.abs(rect.width - other.width) < 2 &&
+        Math.abs(rect.height - other.height) < 2;
+    });
+    if (!duplicate) unique.push(candidate);
+  }
+
+  const rightSide = unique
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left + rect.width / 2 > composerRect.left + composerRect.width * 0.55;
+    })
+    .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+
+  if (rightSide.length < 2) return null;
+  const sendCandidate = rightSide[rightSide.length - 1];
+  const attachmentCandidate = rightSide[rightSide.length - 2];
+  const sendRect = sendCandidate.getBoundingClientRect();
+  const attachRect = attachmentCandidate.getBoundingClientRect();
+  const sameRow = Math.abs(
+    (sendRect.top + sendRect.height / 2) - (attachRect.top + attachRect.height / 2)
+  ) <= 16;
+  const closeCluster = sendRect.left - attachRect.right <= 96;
+
+  return sameRow && closeCluster ? attachmentCandidate : null;
+}
+
+function findPreferredAttachment(composer, inputElement) {
+  return findAction(composer, 'attach') ||
+    findBottomRightAttachmentCandidate(composer, inputElement);
 }
 
 function hasComposerSignal(element) {
@@ -146,7 +206,7 @@ function findToolbar(action, composer) {
     ].filter(Boolean).join(' ').toLowerCase();
     const controlCount = current.querySelectorAll(CONTROL_SELECTOR).length;
 
-    if (controlCount >= 2 || /toolbar|actions|controls|trailing|leading/.test(signal)) {
+    if (controlCount >= 2 || /toolbar|actions|controls|trailing|leading|left-area|right-area/.test(signal)) {
       return current;
     }
     if (!oneControlFallback && controlCount === 1) oneControlFallback = current;
@@ -260,9 +320,12 @@ function genericAnchor(inputElement, options = {}) {
   if (!composer) return null;
 
   const placement = options.placement || 'auto';
-  const attach = findAction(composer, 'attach');
+  const attach = findPreferredAttachment(composer, inputElement);
   const send = findAction(composer, 'send');
 
+  if (placement === 'before-attach' && attach) {
+    return createActionAnchor(inputElement, attach, 'before');
+  }
   if (placement === 'after-attach' && attach) {
     return createActionAnchor(inputElement, attach, 'after');
   }
@@ -273,8 +336,8 @@ function genericAnchor(inputElement, options = {}) {
     return appendAnchor(inputElement, composer);
   }
 
+  if (attach) return createActionAnchor(inputElement, attach, 'before');
   if (send) return createActionAnchor(inputElement, send, 'before');
-  if (attach) return createActionAnchor(inputElement, attach, 'after');
   return appendAnchor(inputElement, composer);
 }
 
@@ -337,6 +400,10 @@ export const DOCKING_STRATEGIES = {
     const run = findAction(composer, 'send');
     return run ? createActionAnchor(inputElement, run, 'before') : null;
   }),
+
+  kimi: platformStrategy('kimi', genericAnchor),
+
+  deepseek: platformStrategy('deepseek', genericAnchor),
 
   generic: platformStrategy('generic', genericAnchor),
 

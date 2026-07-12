@@ -77,6 +77,42 @@ const platforms = [
       </div>`,
     reference: 'button[iconname="add_circle"]',
     order: 'before'
+  },
+  {
+    name: 'Kimi',
+    url: 'https://www.kimi.com/__ape-fixture',
+    html: `
+      <div id="chat-box" class="chat-box composer">
+        <div class="chat-editor">
+          <div class="chat-input-editor" contenteditable="true" role="textbox"></div>
+          <div class="chat-editor-action toolbar">
+            <div class="left-area">
+              <div><div class="icon-button toolkit-trigger-btn"><svg name="Add"></svg></div></div>
+              <div class="tool-switch">Agent</div>
+            </div>
+            <div class="right-area"><div class="current-model">K2.6 Instant</div><div>↑</div></div>
+          </div>
+        </div>
+      </div>`,
+    reference: '.toolkit-trigger-btn',
+    order: 'before'
+  },
+  {
+    name: 'DeepSeek',
+    url: 'https://chat.deepseek.com/__ape-fixture',
+    html: `
+      <div class="composer">
+        <textarea placeholder="Message DeepSeek"></textarea>
+        <div class="composer-footer toolbar">
+          <div class="left-tools"><button>Deep Thinking</button><button>Smart Search</button></div>
+          <div class="right-actions">
+            <button id="deepseek-attach"><svg></svg></button>
+            <button id="deepseek-send"><svg></svg></button>
+          </div>
+        </div>
+      </div>`,
+    reference: '#deepseek-attach',
+    order: 'before'
   }
 ];
 
@@ -88,6 +124,9 @@ function documentFor(body) {
       [contenteditable="true"] { display: block; width: 100%; min-height: 56px; }
       .toolbar { display: flex; align-items: center; gap: 8px; min-height: 40px; }
       .toolbar button { min-width: 36px; height: 36px; border: 0; border-radius: 9999px; }
+      .toolbar svg { width: 18px; height: 18px; }
+      .left-area, .right-area, .left-tools, .right-actions { display: flex; align-items: center; gap: 8px; }
+      .right-area, .right-actions { margin-left: auto; }
     </style></head><body>${body}</body></html>`;
 }
 

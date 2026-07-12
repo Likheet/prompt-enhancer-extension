@@ -53,6 +53,14 @@ class ResilientDOMObserver {
       console.log('[APE] Platform detected: AI Studio');
       return PLATFORMS.AI_STUDIO;
     }
+    if (matchesHostname(hostname, 'kimi.com') || matchesHostname(hostname, 'kimi.ai')) {
+      console.log('[APE] Platform detected: Kimi');
+      return PLATFORMS.KIMI;
+    }
+    if (matchesHostname(hostname, 'deepseek.com')) {
+      console.log('[APE] Platform detected: DeepSeek');
+      return PLATFORMS.DEEPSEEK;
+    }
 
     console.log('[APE] Platform detected: Generic');
     return PLATFORMS.GENERIC;

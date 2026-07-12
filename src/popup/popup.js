@@ -199,7 +199,7 @@ class PopupController {
 
     const toggleBtn = document.getElementById('toggle-byok');
     if (toggleBtn) {
-      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Configure' : 'Close';
+      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Show form' : 'Hide form';
     }
   }
 
@@ -219,6 +219,7 @@ class PopupController {
     if (saveBtn) {
       saveBtn.textContent = 'Validating...';
       saveBtn.disabled = true;
+      saveBtn.setAttribute('aria-busy', 'true');
     }
 
     try {
@@ -251,6 +252,7 @@ class PopupController {
       if (saveBtn) {
         saveBtn.textContent = 'Validate & save';
         saveBtn.disabled = false;
+        saveBtn.removeAttribute('aria-busy');
       }
     }
   }
@@ -348,6 +350,7 @@ class PopupController {
     if (saveBtn) {
       saveBtn.textContent = 'Saving...';
       saveBtn.disabled = true;
+      saveBtn.setAttribute('aria-busy', 'true');
     }
 
     try {
@@ -363,8 +366,9 @@ class PopupController {
       console.error('[APE Popup] Save settings error:', error);
     } finally {
       if (saveBtn) {
-        saveBtn.textContent = 'Save';
+        saveBtn.textContent = 'Save changes';
         saveBtn.disabled = false;
+        saveBtn.removeAttribute('aria-busy');
       }
     }
   }
@@ -707,7 +711,7 @@ class PopupController {
     countElem.textContent = this.managedSites.length;
 
     if (this.managedSites.length === 0) {
-      renderStaticHTML(listElem, '<div class="managed-sites-empty">No site preferences saved yet.</div>');
+      renderStaticHTML(listElem, '<div class="managed-sites-empty">No saved site settings.</div>');
       return;
     }
 
@@ -746,6 +750,7 @@ class PopupController {
   formatPlacement(placement) {
     const labels = {
       auto: 'Auto position',
+      'before-attach': 'Before Attach',
       'after-attach': 'After Attach',
       'before-send': 'Before Send',
       'composer-end': 'Composer edge'

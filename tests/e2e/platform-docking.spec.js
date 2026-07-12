@@ -66,6 +66,36 @@ const fixtures = {
         <div class="button-wrapper"><button aria-label="Run prompt">Run</button></div>
       </div>
     </div>`,
+  kimi: `
+    <div id="chat-box" class="chat-box">
+      <div class="chat-editor">
+        <div class="chat-input-editor" contenteditable="true" role="textbox"></div>
+        <div class="chat-editor-action toolbar">
+          <div class="left-area">
+            <div><div class="icon-button toolkit-trigger-btn"><svg name="Add"></svg></div></div>
+            <div class="tool-switch">Agent</div>
+          </div>
+          <div class="right-area">
+            <div class="current-model">K2.6 Instant</div>
+            <div class="send-control">↑</div>
+          </div>
+        </div>
+      </div>
+    </div>`,
+  deepseek: `
+    <div class="composer">
+      <textarea placeholder="Message DeepSeek"></textarea>
+      <div class="composer-footer toolbar">
+        <div class="left-tools">
+          <button>Deep Thinking</button>
+          <button>Smart Search</button>
+        </div>
+        <div class="right-actions">
+          <button id="deepseek-attach"><svg></svg></button>
+          <button id="deepseek-send"><svg></svg></button>
+        </div>
+      </div>
+    </div>`,
   generic: `
     <form class="composer">
       <div class="editor-shell"><textarea aria-label="Ask the assistant"></textarea></div>
@@ -82,7 +112,9 @@ const expectations = {
   gemini: '.model-picker-container',
   perplexity: '[data-testid="sources-switcher-button"]',
   aistudio: 'button[iconname="add_circle"]',
-  generic: 'button[type="submit"]'
+  kimi: '.toolkit-trigger-btn',
+  deepseek: '#deepseek-attach',
+  generic: '[aria-label="Attach file"]'
 };
 
 async function dockTestButton(page, platform) {
@@ -93,6 +125,9 @@ async function dockTestButton(page, platform) {
       textarea, [contenteditable="true"] { display: block; width: 100%; min-height: 56px; }
       .toolbar { display: flex; align-items: center; gap: 8px; min-height: 40px; }
       .toolbar button { min-width: 36px; height: 36px; border: 0; border-radius: 9999px; }
+      .toolbar svg { width: 18px; height: 18px; }
+      .left-area, .right-area, .left-tools, .right-actions { display: flex; align-items: center; gap: 8px; }
+      .right-area, .right-actions { margin-left: auto; }
     </style>
     ${fixtures[platform]}
   `);
@@ -164,7 +199,7 @@ for (const platform of Object.keys(fixtures)) {
       if (platformName === 'aistudio') {
         return dockNode.nextElementSibling?.contains(referenceNode) || dockNode.nextElementSibling === referenceNode;
       }
-      return dockNode.nextElementSibling === referenceNode;
+      return dockNode.nextElementSibling === referenceNode || dockNode.nextElementSibling?.contains(referenceNode);
     }, { platformName: platform, referenceSelector: expectations[platform] });
     expect(order).toBe(true);
   });
