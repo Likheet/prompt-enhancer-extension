@@ -5,7 +5,7 @@
 
 import browserCompat from '../shared/browser-compat.js';
 import { DEFAULT_SETTINGS, SITE_PLACEMENTS } from '../shared/constants.js';
-import { matchesHostname, renderStaticHTML } from '../shared/utils.js';
+import { matchesHostname, renderStaticHTML, sanitizeHTML } from '../shared/utils.js';
 import {
   isConfigurableUrl,
   resolveSitePreferences,
@@ -62,6 +62,10 @@ class PopupController {
       this.updateStats(stats);
     } catch (error) {
       console.error('[APE Popup] Failed to load data:', error);
+      this.settings = { ...DEFAULT_SETTINGS };
+      this.originalSettings = JSON.parse(JSON.stringify(this.settings));
+      this.subscription = { type: 'free' };
+      this.updateStats({ totalEnhancements: 0, byokEnhancements: 0 });
     }
   }
 
@@ -123,8 +127,37 @@ class PopupController {
       this.changeCurrentSitePlacement(event.target.value);
     });
 
+    document.querySelectorAll('[data-popup-tab]').forEach((tab) => {
+      tab.addEventListener('click', () => this.selectTab(tab.dataset.popupTab));
+      tab.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        const tabs = [...document.querySelectorAll('[data-popup-tab]')];
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const nextIndex = (tabs.indexOf(tab) + direction + tabs.length) % tabs.length;
+        tabs[nextIndex].focus();
+        tabs[nextIndex].click();
+      });
+    });
+
     // Load current settings into form
     this.loadSettingsIntoForm();
+  }
+
+  selectTab(tabName) {
+    document.querySelectorAll('[data-popup-tab]').forEach((tab) => {
+      const isActive = tab.dataset.popupTab === tabName;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', String(isActive));
+    });
+
+    document.querySelectorAll('[data-popup-panel]').forEach((panel) => {
+      const isActive = panel.dataset.popupPanel === tabName;
+      panel.classList.toggle('active', isActive);
+      panel.hidden = !isActive;
+    });
+
+    const content = document.querySelector('.popup-content');
+    if (content) content.scrollTop = 0;
   }
 
   /**
@@ -133,6 +166,7 @@ class PopupController {
   updateUI() {
     const removeKeyBtn = document.getElementById('remove-api-key');
     const apiKeyInput = document.getElementById('gemini-api-key');
+    const apiStatusChip = document.getElementById('api-status-chip');
 
     if (this.subscription?.type === 'byok') {
       // Show remove button
@@ -142,9 +176,17 @@ class PopupController {
       if (this.subscription.apiKeyMasked && apiKeyInput) {
         apiKeyInput.placeholder = this.subscription.apiKeyMasked;
       }
+      if (apiStatusChip) {
+        apiStatusChip.textContent = 'Connected';
+        apiStatusChip.classList.add('connected');
+      }
     } else {
       // Hide remove button
       removeKeyBtn?.classList.add('hidden');
+      if (apiStatusChip) {
+        apiStatusChip.textContent = 'Not connected';
+        apiStatusChip.classList.remove('connected');
+      }
     }
   }
 
@@ -157,7 +199,7 @@ class PopupController {
 
     const toggleBtn = document.getElementById('toggle-byok');
     if (toggleBtn) {
-      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Setup' : 'Hide';
+      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Configure' : 'Close';
     }
   }
 
@@ -207,7 +249,7 @@ class PopupController {
       this.showStatus('Failed to save API key', 'error');
     } finally {
       if (saveBtn) {
-        saveBtn.textContent = 'Save Key';
+        saveBtn.textContent = 'Validate & save';
         saveBtn.disabled = false;
       }
     }
@@ -251,10 +293,12 @@ class PopupController {
     if (apiKeyInput && toggleBtn) {
       if (apiKeyInput.type === 'password') {
         apiKeyInput.type = 'text';
-        toggleBtn.textContent = '🙈';
+        toggleBtn.textContent = 'Hide';
+        toggleBtn.setAttribute('aria-label', 'Hide API key');
       } else {
         apiKeyInput.type = 'password';
-        toggleBtn.textContent = '👁️';
+        toggleBtn.textContent = 'Show';
+        toggleBtn.setAttribute('aria-label', 'Show API key');
       }
     }
   }
@@ -476,6 +520,8 @@ class PopupController {
     const siteUrlElem = document.getElementById('current-site-url');
     const toggleBtn = document.getElementById('toggle-site-btn');
     const placementSelect = document.getElementById('site-placement');
+    const heroStatus = document.getElementById('hero-site-status');
+    const headerSiteState = document.getElementById('header-site-state');
 
     if (configurable) {
       const preferences = resolveSitePreferences({
@@ -490,7 +536,14 @@ class PopupController {
 
       toggleBtn.disabled = false;
       toggleBtn.classList.toggle('enabled', isEnabled);
-      toggleBtn.querySelector('.toggle-site-text').textContent = isEnabled ? 'Disable' : 'Enable';
+      toggleBtn.querySelector('.toggle-site-text').textContent = isEnabled ? 'Turn off' : 'Turn on';
+      heroStatus?.classList.toggle('inactive', !isEnabled);
+      heroStatus?.classList.remove('unavailable');
+      if (headerSiteState) {
+        headerSiteState.textContent = isEnabled
+          ? `Active on ${this.getFriendlyName(hostname)}`
+          : `Paused on ${this.getFriendlyName(hostname)}`;
+      }
 
       // Update event listener
       toggleBtn.onclick = () => this.toggleCurrentSite();
@@ -503,7 +556,10 @@ class PopupController {
       siteUrlElem.textContent = hostname || '—';
       toggleBtn.disabled = true;
       toggleBtn.classList.remove('enabled');
-      toggleBtn.querySelector('.toggle-site-text').textContent = 'Not Available';
+      toggleBtn.querySelector('.toggle-site-text').textContent = 'Unavailable';
+      heroStatus?.classList.remove('inactive');
+      heroStatus?.classList.add('unavailable');
+      if (headerSiteState) headerSiteState.textContent = 'Open an AI chat to manage this site';
       if (placementSelect) {
         placementSelect.disabled = true;
         placementSelect.value = SITE_PLACEMENTS.AUTO;
@@ -651,7 +707,7 @@ class PopupController {
     countElem.textContent = this.managedSites.length;
 
     if (this.managedSites.length === 0) {
-      renderStaticHTML(listElem, '<div class="managed-sites-empty">No managed sites yet</div>');
+      renderStaticHTML(listElem, '<div class="managed-sites-empty">No site preferences saved yet.</div>');
       return;
     }
 
@@ -664,13 +720,13 @@ class PopupController {
       <div class="managed-site-item">
         <div class="managed-site-info">
           <div class="managed-site-details">
-            <div class="managed-site-name">${site.name}</div>
+            <div class="managed-site-name">${sanitizeHTML(site.name || site.hostname)}</div>
             <div class="managed-site-status ${site.enabled ? 'enabled' : 'disabled'}">
-              ${site.enabled ? 'Enabled' : 'Disabled'}
+              ${site.enabled ? 'On' : 'Off'} · ${this.formatPlacement(site.placement)}
             </div>
           </div>
         </div>
-        <button class="btn-remove-site" data-hostname="${site.hostname}">
+        <button class="btn-remove-site" data-hostname="${sanitizeHTML(site.hostname)}">
           Remove
         </button>
       </div>
@@ -685,6 +741,16 @@ class PopupController {
         this.removeManagedSite(hostname);
       });
     });
+  }
+
+  formatPlacement(placement) {
+    const labels = {
+      auto: 'Auto position',
+      'after-attach': 'After Attach',
+      'before-send': 'Before Send',
+      'composer-end': 'Composer edge'
+    };
+    return labels[placement] || labels.auto;
   }
 
   /**

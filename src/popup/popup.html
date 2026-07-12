@@ -3,191 +3,252 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Prompt Enhancer - Settings</title>
+  <title>Prompt Enhancer</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="popup-container">
-    <header class="popup-header">
-      <h1>Prompt Enhancer</h1>
-      <p class="popup-subtitle">Intelligent prompt optimization for AI conversations</p>
+  <div class="popup-shell">
+    <header class="popup-hero">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">
+          <span>PE</span>
+        </div>
+        <div class="brand-copy">
+          <h1 class="brand-name">Prompt Enhancer</h1>
+          <div class="brand-tagline">Browser extension</div>
+        </div>
+        <div class="hero-status" id="hero-site-status">
+          <span class="hero-status-dot"></span>
+          <span id="header-site-state">Checking page…</span>
+        </div>
+      </div>
     </header>
 
+    <nav class="popup-tabs" role="tablist" aria-label="Extension controls">
+      <button class="popup-tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-enhance" data-popup-tab="enhance">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Z"/><path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg>
+        Enhance
+      </button>
+      <button class="popup-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-sites" data-popup-tab="sites">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.8 9h16.4M3.8 15h16.4M12 3.5c2.1 2.3 3.1 5.1 3.1 8.5s-1 6.2-3.1 8.5c-2.1-2.3-3.1-5.1-3.1-8.5S9.9 5.8 12 3.5Z"/></svg>
+        Sites
+      </button>
+      <button class="popup-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-api" data-popup-tab="api">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="3.25"/><path d="M11.25 12H21M17 12v3M14 12v2"/></svg>
+        API
+      </button>
+    </nav>
+
     <main class="popup-content">
-      <!-- API Key Section -->
-      <section class="section compact">
-        <div class="section-header">
-          <h2 class="section-title">Gemini API Key</h2>
-          <button id="toggle-byok" class="toggle-btn">Setup</button>
-        </div>
-
-        <div id="byok-config" class="config-panel hidden">
-          <p class="help-text">
-            Insert your Gemini API key for AI-powered enhancements.
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link">Get Key →</a>
-          </p>
-
-          <div class="form-group">
-            <label for="gemini-api-key">API Key</label>
-            <input
-              type="password"
-              id="gemini-api-key"
-              placeholder="AIza...">
-            <button id="toggle-key-visibility" class="icon-btn" type="button">
-              👁️
-            </button>
+      <section class="tab-panel active" id="panel-enhance" role="tabpanel" data-popup-panel="enhance">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Settings</span>
+            <h1>Enhancement mode</h1>
           </div>
-
-          <div class="button-group">
-            <button id="save-api-key" class="btn btn-primary">Save Key</button>
-            <button id="remove-api-key" class="btn btn-secondary hidden">Remove Key</button>
-          </div>
-
-          <div id="api-key-status" class="status-message hidden"></div>
+          <span class="panel-kicker">3 modes</span>
         </div>
-      </section>
-
-      <!-- Prompt Template Section -->
-      <section class="section compact">
-        <h2 class="section-title">Prompt Template</h2>
-        <p class="section-subtitle">Choose how we frame your request before sending it to Gemini.</p>
 
         <div class="template-grid">
           <label class="template-card" for="template-standard">
             <input type="radio" name="prompt-template" id="template-standard" value="standard">
-            <div class="template-content">
-              <div class="template-title">Direct Enhancer</div>
-              <p class="template-desc">Keep Gemini focused on rewriting your prompt directly with no commentary or formatting extras.</p>
-            </div>
+            <span class="template-icon template-icon-direct" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+            </span>
+            <span class="template-content">
+              <span class="template-title">Direct Enhancer</span>
+              <span class="template-desc">A clean rewrite with no extra framing.</span>
+            </span>
+            <span class="template-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><path d="m5.5 10.2 2.8 2.8 6.2-6.2"/></svg>
+            </span>
           </label>
 
           <label class="template-card" for="template-structured">
             <input type="radio" name="prompt-template" id="template-structured" value="structured">
-            <div class="template-content">
-              <div class="template-title">Structured Blueprint</div>
-              <p class="template-desc">Transform short or vague requests into a role/objective/deliverables format for richer answers.</p>
-            </div>
+            <span class="template-icon template-icon-structured" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11"/><circle cx="4.5" cy="6" r=".75"/><circle cx="4.5" cy="12" r=".75"/><circle cx="4.5" cy="18" r=".75"/></svg>
+            </span>
+            <span class="template-content">
+              <span class="template-title">Structured Blueprint</span>
+              <span class="template-desc">Role, objective, constraints and deliverables.</span>
+            </span>
+            <span class="template-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><path d="m5.5 10.2 2.8 2.8 6.2-6.2"/></svg>
+            </span>
           </label>
 
           <label class="template-card" for="template-custom">
             <input type="radio" name="prompt-template" id="template-custom" value="custom">
-            <div class="template-content">
-              <div class="template-title">Custom Instructions</div>
-              <p class="template-desc">Use your own template. Remember to include <code>{{PROMPT}}</code> where the original text should be inserted.</p>
-            </div>
+            <span class="template-icon template-icon-custom" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M13 7l-7.5 7.5L4 20l5.5-1.5L17 11"/></svg>
+            </span>
+            <span class="template-content">
+              <span class="template-title">Custom Instructions</span>
+              <span class="template-desc">Build your own reusable enhancement recipe.</span>
+            </span>
+            <span class="template-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><path d="m5.5 10.2 2.8 2.8 6.2-6.2"/></svg>
+            </span>
           </label>
         </div>
 
-        <div id="custom-template-wrapper" class="custom-template hidden">
-          <label for="custom-template-input">Custom Template</label>
-          <textarea
-            id="custom-template-input"
-            rows="6"
-            placeholder="Describe exactly how Gemini should rewrite prompts. Use {{PROMPT}} as the placeholder for the original text."></textarea>
-          <p class="help-text">We replace every <code>{{PROMPT}}</code> token with the text you're enhancing.</p>
-        </div>
-      </section>
-
-      <!-- Settings Section -->
-      <section class="section compact">
-        <h2 class="section-title">Settings</h2>
-
-        <div class="setting-item">
-          <label for="context-window">Context Window</label>
-          <input
-            type="number"
-            id="context-window"
-            min="1"
-            max="20"
-            value="10"
-            class="input">
-        </div>
-      </section>
-
-      <!-- Stats Section -->
-      <section class="section compact">
-        <h2 class="section-title">Usage Statistics</h2>
-        <div class="stats-container">
-          <div class="stat-item">
-            <div class="stat-header">
-              <span class="stat-label">Total Enhancements</span>
-            </div>
-            <div class="stat-value" id="total-enhancements">0</div>
+        <div id="custom-template-wrapper" class="custom-template surface-card hidden">
+          <div class="field-heading">
+            <label for="custom-template-input">Custom template</label>
+            <code>{{PROMPT}}</code>
           </div>
-          <div class="stat-divider"></div>
-          <div class="stat-item">
-            <div class="stat-header">
-              <span class="stat-label">API Enhanced</span>
-            </div>
-            <div class="stat-value" id="byok-enhancements">0</div>
-          </div>
+          <textarea id="custom-template-input" rows="6" placeholder="Describe how the prompt should be rewritten. Include {{PROMPT}} where the original text belongs."></textarea>
+          <p>Every <code>{{PROMPT}}</code> token is replaced with your current message.</p>
         </div>
+
+        <section class="surface-card context-card">
+          <div class="surface-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 7.5h12M6 12h8M6 16.5h5"/><path d="M4 3.5h16a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H8l-4.5 2V5A1.5 1.5 0 0 1 5 3.5Z"/></svg>
+          </div>
+          <div class="context-copy">
+            <label for="context-window">Conversation context</label>
+            <p>Recent messages considered when refining your prompt.</p>
+          </div>
+          <div class="number-control">
+            <input type="number" id="context-window" min="1" max="20" value="10" aria-label="Context window">
+            <span>msgs</span>
+          </div>
+        </section>
+
+        <section class="stats-grid" aria-label="Usage statistics">
+          <div class="stat-card stat-card-primary">
+            <div class="stat-topline"><span>Total enhanced</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg></div>
+            <strong id="total-enhancements">0</strong>
+            <small>prompts improved</small>
+          </div>
+          <div class="stat-card">
+            <div class="stat-topline"><span>Via Gemini API</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M12 8v8"/><circle cx="12" cy="12" r="8.5"/></svg></div>
+            <strong id="byok-enhancements">0</strong>
+            <small>AI-powered rewrites</small>
+          </div>
+        </section>
       </section>
 
-      <!-- Site Management Section -->
-      <section class="section compact">
-        <h2 class="section-title">Site Management</h2>
-        <p class="section-subtitle">Enable the extension on any website with text input</p>
-        
-        <div class="current-site-card" id="current-site-card">
+      <section class="tab-panel" id="panel-sites" role="tabpanel" data-popup-panel="sites" hidden>
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Current tab</span>
+            <h1>Website integration</h1>
+          </div>
+        </div>
+
+        <section class="current-site-card surface-card" id="current-site-card">
+          <div class="site-avatar" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.8 9h16.4M3.8 15h16.4M12 3.5c2.1 2.3 3.1 5.1 3.1 8.5s-1 6.2-3.1 8.5c-2.1-2.3-3.1-5.1-3.1-8.5S9.9 5.8 12 3.5Z"/></svg>
+          </div>
           <div class="current-site-info">
-            <div class="site-details">
-              <div class="site-name" id="current-site-name">Not on a supported site</div>
-              <div class="site-url" id="current-site-url">—</div>
-            </div>
+            <span class="site-overline">Current website</span>
+            <div class="site-name" id="current-site-name">Checking current tab…</div>
+            <div class="site-url" id="current-site-url">—</div>
           </div>
           <button id="toggle-site-btn" class="btn-toggle-site" disabled>
-            <span class="toggle-site-text">Enable</span>
+            <span class="toggle-site-text">Unavailable</span>
           </button>
-        </div>
+        </section>
 
-        <label class="site-placement-control" for="site-placement">
-          <span>
+        <label class="site-placement-control surface-card" for="site-placement">
+          <span class="placement-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg>
+          </span>
+          <span class="placement-copy">
             <strong>Button position</strong>
-            <small>Auto follows each site's native composer layout.</small>
+            <small>Choose where the enhancer joins this composer.</small>
           </span>
           <select id="site-placement" disabled>
-            <option value="auto">Auto (recommended)</option>
-            <option value="after-attach">Next to Attach</option>
-            <option value="before-send">Next to Send</option>
+            <option value="auto">Auto</option>
+            <option value="after-attach">After Attach</option>
+            <option value="before-send">Before Send</option>
             <option value="composer-end">Composer edge</option>
           </select>
         </label>
 
-        <div class="managed-sites">
+        <section class="managed-sites surface-card">
           <div class="managed-sites-header">
-            <span class="managed-sites-label">Managed Sites</span>
+            <div>
+              <span class="eyebrow">Saved preferences</span>
+              <h2>Managed sites</h2>
+            </div>
             <span class="managed-sites-count" id="managed-sites-count">0</span>
           </div>
           <div id="managed-sites-list" class="managed-sites-list">
-            <!-- Sites will be dynamically inserted here -->
+            <div class="managed-sites-empty">No site preferences saved yet.</div>
           </div>
-        </div>
+        </section>
       </section>
 
-      <!-- Support Section -->
-      <section class="section compact">
-        <h2 class="section-title">Support</h2>
-        <div class="support-links">
-          <a href="#" class="support-link">Documentation</a>
-          <a href="#" class="support-link">Report Issue</a>
-          <a href="#" class="support-link">Feedback</a>
+      <section class="tab-panel" id="panel-api" role="tabpanel" data-popup-panel="api" hidden>
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Provider</span>
+            <h1>Gemini API</h1>
+          </div>
         </div>
+
+        <section class="api-hero surface-card">
+          <div class="api-brand" aria-hidden="true">
+            <span>API</span>
+          </div>
+          <div class="api-copy">
+            <div class="api-heading-row">
+              <h2>Gemini API</h2>
+              <span id="api-status-chip" class="api-status-chip">Not connected</span>
+            </div>
+            <p>Use your own API key and Gemini quota for prompt enhancement.</p>
+          </div>
+          <button id="toggle-byok" class="toggle-btn" type="button">Configure</button>
+        </section>
+
+        <div id="byok-config" class="config-panel surface-card hidden">
+          <div class="config-heading">
+            <div>
+              <span class="eyebrow">Secure connection</span>
+              <h2>Add your API key</h2>
+            </div>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-link">Get a key ↗</a>
+          </div>
+
+          <div class="form-group">
+            <label for="gemini-api-key">Gemini API key</label>
+            <div class="secret-field">
+              <input type="password" id="gemini-api-key" placeholder="AIza…" autocomplete="off" spellcheck="false">
+              <button id="toggle-key-visibility" class="icon-btn" type="button" aria-label="Show API key">Show</button>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="save-api-key" class="btn btn-primary">Validate &amp; save</button>
+            <button id="remove-api-key" class="btn btn-secondary hidden">Remove key</button>
+          </div>
+
+          <div id="api-key-status" class="status-message hidden" role="status"></div>
+        </div>
+
+        <aside class="privacy-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="4.5" y="10" width="15" height="10.5" rx="2"/><path d="M12 14v3"/></svg>
+          <div><strong>Your key stays in browser storage.</strong><span>It is used only when you request an enhancement.</span></div>
+        </aside>
       </section>
     </main>
 
     <footer class="popup-footer">
-      <p>Version 0.1.0</p>
+      <span>Prompt Enhancer</span>
+      <span class="footer-dot"></span>
+      <span>v0.1.0</span>
     </footer>
   </div>
 
-  <!-- Save Bar -->
   <div id="save-bar" class="save-bar hidden">
     <div class="save-bar-content">
-      <span class="save-bar-text">You have unsaved changes</span>
+      <span class="save-bar-text"><span></span>Unsaved changes</span>
       <div class="save-bar-actions">
-        <button id="cancel-settings" class="btn btn-secondary btn-sm">Cancel</button>
-        <button id="save-settings" class="btn btn-primary btn-sm">Save</button>
+        <button id="cancel-settings" class="btn btn-secondary btn-sm">Discard</button>
+        <button id="save-settings" class="btn btn-primary btn-sm">Save changes</button>
       </div>
     </div>
   </div>
