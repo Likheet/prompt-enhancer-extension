@@ -1,25 +1,74 @@
 import browserCompat from '../shared/browser-compat.js';
-import { SUBSCRIPTION_TYPES, STORAGE_KEYS, GEMINI_API } from '../shared/constants.js';
+import {
+  AI_PROVIDERS,
+  SUBSCRIPTION_TYPES,
+  STORAGE_KEYS,
+  GEMINI_API,
+  GROQ_API
+} from '../shared/constants.js';
+import {
+  normalizePreferredProvider,
+  normalizeProviderMode,
+  PROVIDER_STORAGE_VERSION,
+  resolveProviderConfiguration
+} from '../shared/provider-config.js';
 
 class SubscriptionManager {
   constructor() {
     this.subscriptionStatus = null;
     this.initialized = false;
+    this.initializePromise = null;
+    this.trackEventQueue = Promise.resolve();
   }
 
   async initialize() {
     if (this.initialized) return;
-    const stored = await this.getStoredSubscription();
-    if (stored) {
-      this.subscriptionStatus = stored;
-    } else {
-      this.subscriptionStatus = {
-        type: SUBSCRIPTION_TYPES.FREE,
-        active: true,
-        activatedAt: Date.now()
-      };
-      await this.saveSubscription();
+    if (this.initializePromise) return this.initializePromise;
+
+    this.initializePromise = this.performInitialization()
+      .finally(() => {
+        this.initializePromise = null;
+      });
+    return this.initializePromise;
+  }
+
+  async performInitialization() {
+    const result = await browserCompat.storageGet([
+      STORAGE_KEYS.SUBSCRIPTION,
+      STORAGE_KEYS.SETTINGS
+    ]);
+    const stored = result[STORAGE_KEYS.SUBSCRIPTION] || {};
+    const storedSettings = result[STORAGE_KEYS.SETTINGS] || {};
+    const alreadyMigrated = stored.providerStorageVersion === PROVIDER_STORAGE_VERSION;
+    const legacyGeminiKey = alreadyMigrated
+      ? null
+      : stored.apiKey || storedSettings.geminiApiKey || storedSettings.geminiKey || null;
+
+    this.subscriptionStatus = {
+      ...stored,
+      type: SUBSCRIPTION_TYPES.FREE,
+      active: true,
+      activatedAt: stored.activatedAt || Date.now(),
+      providerMode: normalizeProviderMode(stored.providerMode),
+      preferredProvider: normalizePreferredProvider(stored.preferredProvider),
+      providerStorageVersion: PROVIDER_STORAGE_VERSION
+    };
+
+    if (!this.subscriptionStatus.geminiApiKey && legacyGeminiKey) {
+      this.subscriptionStatus.geminiApiKey = legacyGeminiKey;
     }
+    delete this.subscriptionStatus.apiKey;
+    delete this.subscriptionStatus.provider;
+    this.updateSubscriptionType();
+
+    const updates = { [STORAGE_KEYS.SUBSCRIPTION]: this.subscriptionStatus };
+    if (!alreadyMigrated && (storedSettings.geminiApiKey || storedSettings.geminiKey)) {
+      const migratedSettings = { ...storedSettings };
+      delete migratedSettings.geminiApiKey;
+      delete migratedSettings.geminiKey;
+      updates[STORAGE_KEYS.SETTINGS] = migratedSettings;
+    }
+    await browserCompat.storageSet(updates);
     this.initialized = true;
   }
 
@@ -48,8 +97,16 @@ class SubscriptionManager {
   }
 
   async activateBYOK(apiKey) {
+    return this.saveProviderKey(AI_PROVIDERS.GEMINI, apiKey);
+  }
+
+  async saveProviderKey(provider, apiKey) {
+    if (!this.initialized) await this.initialize();
+    if (provider !== AI_PROVIDERS.GEMINI && provider !== AI_PROVIDERS.GROQ) {
+      return { success: false, error: 'Unsupported AI provider' };
+    }
     if (!apiKey || apiKey.trim().length === 0) {
-      return { success: false, error: 'API key is required' };
+      return { success: false, error: `${this.getProviderLabel(provider)} API key is required` };
     }
 
     const { sanitized: sanitizedKey, removed } = this.sanitizeAPIKey(apiKey);
@@ -57,38 +114,47 @@ class SubscriptionManager {
       console.warn('[APE] Removed invalid characters from API key:', removed.join(', '));
     }
 
-    const isValid = await this.validateGeminiKey(sanitizedKey);
-    if (!isValid) {
+    if (!sanitizedKey) {
+      return { success: false, error: 'API key is required' };
+    }
+
+    const validation = await this.validateProviderKey(provider, sanitizedKey);
+    if (!validation.valid) {
       return {
         success: false,
-        error: sanitizedKey !== apiKey
-          ? 'Invalid API key (invisible characters were removed, but key is still invalid)'
-          : 'Invalid API key or API access denied'
+        error: validation.error || (sanitizedKey !== apiKey
+          ? `${this.getProviderLabel(provider)} rejected the key after invisible characters were removed`
+          : `Invalid ${this.getProviderLabel(provider)} API key or API access denied`)
       };
     }
 
-    this.subscriptionStatus = {
-      type: SUBSCRIPTION_TYPES.BYOK,
-      active: true,
-      apiKey: sanitizedKey,
-      provider: 'gemini',
-      activatedAt: Date.now()
-    };
+    this.subscriptionStatus[`${provider}ApiKey`] = sanitizedKey;
+    this.subscriptionStatus.active = true;
+    this.subscriptionStatus.activatedAt ||= Date.now();
+    this.updateSubscriptionType();
 
     await this.saveSubscription();
-    await this.trackEvent('byok_activated');
+    await this.trackEvent('byok_activated', { provider });
 
     return {
       success: true,
-      message: sanitizedKey !== apiKey
-        ? 'BYOK tier activated (invisible characters were removed from key)'
-        : 'BYOK tier activated successfully'
+      message: validation.warning || (sanitizedKey !== apiKey
+        ? `${this.getProviderLabel(provider)} key saved after invisible characters were removed`
+        : `${this.getProviderLabel(provider)} key saved`)
     };
+  }
+
+  async validateProviderKey(provider, apiKey) {
+    return provider === AI_PROVIDERS.GROQ
+      ? this.validateGroqKey(apiKey)
+      : this.validateGeminiKey(apiKey);
   }
 
   async validateGeminiKey(apiKey) {
     const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
-    console.log('[APE] Validating API key with model:', GEMINI_API.MODEL);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_API.TIMEOUT);
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -99,78 +165,122 @@ class SubscriptionManager {
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'Test' }] }],
           generationConfig: { maxOutputTokens: 10 }
-        })
+        }),
+        signal: controller.signal
       });
 
-      console.log('[APE] API validation response status:', response.status);
-      if (response.status !== 200 && response.status !== 429) {
-        const errorText = await response.text();
-        console.error('[APE] API validation failed. Status:', response.status);
-        console.error('[APE] Response body:', errorText);
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) {
-            console.error('[APE] Error details:', errorJson.error.message);
-          }
-        } catch (_) {
-          // A non-JSON error body is still represented by the HTTP status.
-        }
+      if (response.status === 200) {
+        return { valid: true };
       }
 
-      const isValid = response.status === 200 || response.status === 429;
-      console.log('[APE] API key validation result:', isValid ? '✓ VALID' : '✗ INVALID');
-      return isValid;
-    } catch (error) {
-      if (error.message && (error.message.includes('ISO-8859-1') || error.message.includes('code point'))) {
-        console.error('[APE] API key contains invalid characters after sanitization:', error);
-        const problematicChars = [...apiKey]
-          .filter(c => c.charCodeAt(0) > 127)
-          .map(c => `U+${c.charCodeAt(0).toString(16).toUpperCase()}`);
-        if (problematicChars.length > 0) {
-          console.error('[APE] Problematic characters:', problematicChars.join(', '));
-        }
-      } else {
-        console.error('[APE] API key validation error:', error);
+      if (response.status === 429) {
+        return {
+          valid: true,
+          warning: 'BYOK tier activated. Gemini is currently rate limited; enhancements will resume after the quota resets.'
+        };
       }
-      return false;
+
+      if (response.status === 401 || response.status === 403) {
+        return { valid: false, error: 'Invalid Gemini API key or API access denied' };
+      }
+
+      return {
+        valid: false,
+        error: `Could not validate the API key (status ${response.status}). Please try again.`
+      };
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return {
+          valid: false,
+          error: 'API key validation timed out. Check your connection and try again.'
+        };
+      }
+
+      console.error('[APE] API key validation error:', error);
+      return {
+        valid: false,
+        error: 'Could not validate the API key. Check your connection and try again.'
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async validateGroqKey(apiKey) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GROQ_API.TIMEOUT);
+
+    try {
+      const response = await fetch(`${GROQ_API.BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: GROQ_API.MODEL,
+          messages: [{ role: 'user', content: 'Reply with OK.' }],
+          temperature: 0.1,
+          max_completion_tokens: 4,
+          stream: false
+        }),
+        signal: controller.signal
+      });
+
+      if (response.status === 200) return { valid: true };
+      if (response.status === 429) {
+        return {
+          valid: true,
+          warning: 'Groq key saved. Groq is currently rate limited; enhancements will resume after the quota resets.'
+        };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return { valid: false, error: 'Invalid Groq API key or API access denied' };
+      }
+      return {
+        valid: false,
+        error: `Could not validate the Groq API key (status ${response.status}). Please try again.`
+      };
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return { valid: false, error: 'Groq API key validation timed out. Check your connection and try again.' };
+      }
+      return { valid: false, error: 'Could not validate the Groq API key. Check your connection and try again.' };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   async deactivateBYOK() {
     if (!this.initialized) await this.initialize();
+    return this.clearProviderKey(AI_PROVIDERS.GEMINI);
+  }
 
-    this.subscriptionStatus = {
-      type: SUBSCRIPTION_TYPES.FREE,
-      active: true,
-      activatedAt: Date.now()
-    };
-
+  async clearProviderKey(provider) {
+    if (!this.initialized) await this.initialize();
+    if (provider !== AI_PROVIDERS.GEMINI && provider !== AI_PROVIDERS.GROQ) {
+      return { success: false, error: 'Unsupported AI provider' };
+    }
+    delete this.subscriptionStatus[`${provider}ApiKey`];
+    this.updateSubscriptionType();
     await this.saveSubscription();
-    await this.trackEvent('byok_deactivated');
+    await this.trackEvent('byok_deactivated', { provider });
+    return { success: true, message: `${this.getProviderLabel(provider)} key cleared` };
+  }
 
-    return { success: true, message: 'Returned to Free tier' };
+  async setProviderMode(providerMode) {
+    if (!this.initialized) await this.initialize();
+    const normalizedMode = normalizeProviderMode(providerMode);
+    this.subscriptionStatus.providerMode = normalizedMode;
+    if (normalizedMode === AI_PROVIDERS.GEMINI || normalizedMode === AI_PROVIDERS.GROQ) {
+      this.subscriptionStatus.preferredProvider = normalizedMode;
+    }
+    await this.saveSubscription();
+    return { success: true, providerMode: normalizedMode };
   }
 
   async updateAPIKey(newApiKey) {
-    if (this.subscriptionStatus.type !== SUBSCRIPTION_TYPES.BYOK) {
-      return { success: false, error: 'Not on BYOK tier' };
-    }
-
-    const { sanitized: sanitizedKey, removed } = this.sanitizeAPIKey(newApiKey);
-    if (removed.length > 0) {
-      console.warn('[APE] Removed invalid characters from API key:', removed.join(', '));
-    }
-
-    const isValid = await this.validateGeminiKey(sanitizedKey);
-    if (!isValid) {
-      return { success: false, error: 'Invalid API key' };
-    }
-
-    this.subscriptionStatus.apiKey = sanitizedKey;
-    this.subscriptionStatus.updatedAt = Date.now();
-    await this.saveSubscription();
-
-    return { success: true, message: 'API key updated successfully' };
+    return this.saveProviderKey(AI_PROVIDERS.GEMINI, newApiKey);
   }
 
   async getSubscriptionType() {
@@ -180,36 +290,36 @@ class SubscriptionManager {
 
   async isBYOKActive() {
     if (!this.initialized) await this.initialize();
-    return this.subscriptionStatus.type === SUBSCRIPTION_TYPES.BYOK &&
-      this.subscriptionStatus.active &&
-      this.subscriptionStatus.apiKey;
+    return this.subscriptionStatus.type === SUBSCRIPTION_TYPES.BYOK && this.subscriptionStatus.active;
   }
 
   async getAPIKey() {
     if (!this.initialized) await this.initialize();
-    return this.subscriptionStatus.type === SUBSCRIPTION_TYPES.BYOK
-      ? this.subscriptionStatus.apiKey
-      : null;
+    return resolveProviderConfiguration(this.subscriptionStatus).apiKey;
+  }
+
+  async getProviderConfiguration() {
+    if (!this.initialized) await this.initialize();
+    return resolveProviderConfiguration(this.subscriptionStatus);
   }
 
   async getSubscriptionInfo() {
     if (!this.initialized) await this.initialize();
 
-    const info = {
+    const resolved = resolveProviderConfiguration(this.subscriptionStatus);
+    return {
       type: this.subscriptionStatus.type,
       active: this.subscriptionStatus.active,
-      activatedAt: this.subscriptionStatus.activatedAt
+      activatedAt: this.subscriptionStatus.activatedAt,
+      providerMode: resolved.providerMode,
+      preferredProvider: resolved.preferredProvider,
+      actualProvider: resolved.provider,
+      configuredProviders: resolved.configuredProviders,
+      providers: {
+        gemini: { configured: Boolean(this.subscriptionStatus.geminiApiKey) },
+        groq: { configured: Boolean(this.subscriptionStatus.groqApiKey) }
+      }
     };
-
-    if (this.subscriptionStatus.type === SUBSCRIPTION_TYPES.BYOK) {
-      info.provider = this.subscriptionStatus.provider;
-      info.hasApiKey = !!this.subscriptionStatus.apiKey;
-      info.apiKeyMasked = this.subscriptionStatus.apiKey
-        ? this.maskAPIKey(this.subscriptionStatus.apiKey)
-        : null;
-    }
-
-    return info;
   }
 
   sanitizeAPIKey(apiKey) {
@@ -243,7 +353,23 @@ class SubscriptionManager {
     return `${start}...${end}`;
   }
 
-  async trackEvent(eventName, data = {}) {
+  updateSubscriptionType() {
+    this.subscriptionStatus.type = this.subscriptionStatus.geminiApiKey || this.subscriptionStatus.groqApiKey
+      ? SUBSCRIPTION_TYPES.BYOK
+      : SUBSCRIPTION_TYPES.FREE;
+  }
+
+  getProviderLabel(provider) {
+    return provider === AI_PROVIDERS.GROQ ? 'Groq' : 'Gemini';
+  }
+
+  trackEvent(eventName, data = {}) {
+    const operation = this.trackEventQueue.then(() => this.persistEvent(eventName, data));
+    this.trackEventQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  async persistEvent(eventName, data = {}) {
     try {
       const stats = await browserCompat.storageGet([STORAGE_KEYS.USAGE_STATS]);
       const usageStats = stats[STORAGE_KEYS.USAGE_STATS] || {
@@ -293,7 +419,10 @@ class SubscriptionManager {
     this.subscriptionStatus = {
       type: SUBSCRIPTION_TYPES.FREE,
       active: true,
-      activatedAt: Date.now()
+      activatedAt: Date.now(),
+      providerMode: AI_PROVIDERS.AUTO,
+      preferredProvider: AI_PROVIDERS.GEMINI,
+      providerStorageVersion: PROVIDER_STORAGE_VERSION
     };
     await this.saveSubscription();
     this.initialized = true;

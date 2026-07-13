@@ -3,6 +3,19 @@ const { chromium, expect, test } = require('@playwright/test');
 
 const extensionPath = path.resolve(__dirname, '..', '..');
 
+async function getExtensionServiceWorker(context) {
+  const isExtensionWorker = (worker) => worker.url().endsWith('/dist/service-worker.js');
+  const existing = context.serviceWorkers().find(isExtensionWorker);
+  if (existing) return existing;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const worker = await context.waitForEvent('serviceworker');
+    if (isExtensionWorker(worker)) return worker;
+  }
+
+  throw new Error('Prompt Enhancer service worker did not start');
+}
+
 async function attachToTarget(cdp, targetId) {
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId });
   let requestId = 0;
@@ -32,7 +45,7 @@ async function attachToTarget(cdp, targetId) {
 }
 
 test('toolbar action opens a fully visible popup document', async ({ browserName: _browserName }, testInfo) => {
-  const context = await chromium.launchPersistentContext(testInfo.outputPath('toolbar-profile'), {
+  const context = await chromium.launchPersistentContext(testInfo.outputPath('p'), {
     channel: 'chromium',
     headless: true,
     args: [
@@ -42,8 +55,7 @@ test('toolbar action opens a fully visible popup document', async ({ browserName
   });
 
   try {
-    let [serviceWorker] = context.serviceWorkers();
-    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker');
+    const serviceWorker = await getExtensionServiceWorker(context);
     const hostPage = context.pages()[0] || await context.newPage();
     const cdp = await context.newCDPSession(hostPage);
 

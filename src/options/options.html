@@ -99,7 +99,7 @@
       <section class="settings-section">
         <h2 class="section-title">API Configuration</h2>
         <p class="section-description">
-          Use your own Gemini API key for AI-powered enhancements (BYOK - Bring Your Own Key).
+          Use your own Gemini or Groq API key for AI-powered enhancements. One key is enough.
         </p>
 
         <div class="subscription-card">
@@ -107,6 +107,16 @@
             <span class="subscription-badge" id="subscription-badge">Free Tier</span>
             <span class="subscription-status" id="subscription-status">Using rule-based enhancement</span>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label for="provider-mode">AI Provider</label>
+          <select id="provider-mode">
+            <option value="auto">Auto</option>
+            <option value="gemini">Gemini</option>
+            <option value="groq">Groq</option>
+          </select>
+          <small class="help-text">Auto uses the available key and your last explicit provider preference.</small>
         </div>
 
         <div class="form-group">
@@ -120,21 +130,36 @@
             <input
               type="password"
               id="gemini-api-key"
-              placeholder="AIza..."
-              autocomplete="off"
+              placeholder="Enter a new Gemini API key"
+              autocomplete="new-password"
             >
-            <button type="button" id="toggle-api-key" class="icon-button" title="Show/Hide API Key">
-              <span id="eye-icon">👁️</span>
-            </button>
+            <button type="button" class="icon-button toggle-provider-key" data-provider="gemini">Show</button>
           </div>
           <small class="help-text">
-            Your API key is stored securely in your browser and never shared.
+            Gemini 3.1 Flash-Lite · <span id="gemini-provider-status">Not configured</span>
           </small>
         </div>
 
         <div class="button-group">
-          <button id="save-api-key" class="btn btn-primary">Save API Key</button>
-          <button id="remove-api-key" class="btn btn-secondary" style="display: none;">Remove API Key</button>
+          <button class="btn btn-primary save-provider-key" data-provider="gemini">Save Gemini Key</button>
+          <button class="btn btn-secondary clear-provider-key" data-provider="gemini" style="display: none;">Clear Gemini Key</button>
+        </div>
+
+        <div class="form-group">
+          <label for="groq-api-key">
+            Groq API Key
+            <a href="https://console.groq.com/keys" target="_blank" class="external-link">Get API Key →</a>
+          </label>
+          <div class="input-with-button">
+            <input type="password" id="groq-api-key" placeholder="Enter a new Groq API key" autocomplete="new-password">
+            <button type="button" class="icon-button toggle-provider-key" data-provider="groq">Show</button>
+          </div>
+          <small class="help-text">Llama 3.1 8B Instant · <span id="groq-provider-status">Not configured</span></small>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-primary save-provider-key" data-provider="groq">Save Groq Key</button>
+          <button class="btn btn-secondary clear-provider-key" data-provider="groq" style="display: none;">Clear Groq Key</button>
         </div>
 
         <div id="api-key-status" class="status-message" style="display: none;"></div>
@@ -144,7 +169,7 @@
       <section class="settings-section">
         <h2 class="section-title">AI Prompt Template</h2>
         <p class="section-description">
-          Choose the instructions that Gemini uses when enhancing your text, or write a custom template.
+          Choose the instructions the selected provider uses when enhancing your text, or write a custom template.
         </p>
 
         <div class="prompt-template-grid">
@@ -168,7 +193,7 @@
             <input type="radio" name="prompt-template" id="prompt-template-custom" value="custom">
             <div class="prompt-template-content">
               <h3>Write Your Own</h3>
-              <p>Provide a custom instruction block for Gemini. Use <code>{{PROMPT}}</code> where the user input should appear.</p>
+              <p>Provide a custom instruction block for the selected provider. Use <code>{{PROMPT}}</code> where the user input should appear.</p>
             </div>
           </label>
         </div>
@@ -178,7 +203,7 @@
           <textarea
             id="custom-template-textarea"
             rows="10"
-            placeholder="Describe how Gemini should enhance text. Use {{PROMPT}} to insert the user's input."
+            placeholder="Describe how the selected provider should enhance text. Use {{PROMPT}} to insert the user's input."
           ></textarea>
           <small class="help-text">
             Example: "You are a marketing strategist...\n\nNow rewrite the following request:\n{{PROMPT}}"

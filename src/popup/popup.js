@@ -20,6 +20,8 @@ class PopupController {
     this.hasUnsavedChanges = false;
     this.currentTab = null;
     this.managedSites = [];
+    this.lastFocusedElement = null;
+    this.handleSettingsKeydown = this.handleSettingsKeydown.bind(this);
     this.init();
   }
 
@@ -73,24 +75,20 @@ class PopupController {
    * Setup event listeners
    */
   setupEventListeners() {
-    // BYOK toggle
-    document.getElementById('toggle-byok')?.addEventListener('click', () => {
-      this.toggleBYOKConfig();
+    document.querySelectorAll('.save-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.saveAPIKey(button.dataset.provider));
     });
 
-    // Save API key
-    document.getElementById('save-api-key')?.addEventListener('click', () => {
-      this.saveAPIKey();
+    document.querySelectorAll('.clear-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.removeAPIKey(button.dataset.provider));
     });
 
-    // Remove API key
-    document.getElementById('remove-api-key')?.addEventListener('click', () => {
-      this.removeAPIKey();
+    document.querySelectorAll('.toggle-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.toggleKeyVisibility(button.dataset.provider));
     });
 
-    // Toggle key visibility
-    document.getElementById('toggle-key-visibility')?.addEventListener('click', () => {
-      this.toggleKeyVisibility();
+    document.getElementById('provider-mode')?.addEventListener('change', (event) => {
+      void this.saveProviderMode(event.target.value);
     });
 
     // Save bar buttons
@@ -122,7 +120,16 @@ class PopupController {
     contextWindow?.addEventListener('input', () => {
       this.checkForChanges();
     });
+    document.getElementById('conversation-awareness')?.addEventListener('change', () => {
+      this.updateContextControlState();
+      this.checkForChanges();
+    });
 
+    const openSettings = document.getElementById('open-settings');
+    openSettings?.addEventListener('click', () => this.openSettingsPanel());
+    document.querySelectorAll('[data-close-settings]').forEach((el) => {
+      el.addEventListener('click', () => this.closeSettingsPanel());
+    });
     document.getElementById('site-placement')?.addEventListener('change', (event) => {
       this.changeCurrentSitePlacement(event.target.value);
     });
@@ -164,58 +171,35 @@ class PopupController {
    * Update UI based on API key status
    */
   updateUI() {
-    const removeKeyBtn = document.getElementById('remove-api-key');
-    const apiKeyInput = document.getElementById('gemini-api-key');
-    const apiStatusChip = document.getElementById('api-status-chip');
+    const providerMode = document.getElementById('provider-mode');
+    if (providerMode) providerMode.value = this.subscription?.providerMode || 'auto';
 
-    if (this.subscription?.type === 'byok') {
-      // Show remove button
-      removeKeyBtn?.classList.remove('hidden');
-
-      // Show masked API key
-      if (this.subscription.apiKeyMasked && apiKeyInput) {
-        apiKeyInput.placeholder = this.subscription.apiKeyMasked;
+    ['gemini', 'groq'].forEach((provider) => {
+      const configured = Boolean(this.subscription?.providers?.[provider]?.configured);
+      const status = document.getElementById(`${provider}-status`);
+      const clearButton = document.querySelector(`.clear-provider-key[data-provider="${provider}"]`);
+      if (status) {
+        status.textContent = configured ? 'Configured' : 'Not configured';
+        status.classList.toggle('configured', configured);
       }
-      if (apiStatusChip) {
-        apiStatusChip.textContent = 'Connected';
-        apiStatusChip.classList.add('connected');
-      }
-    } else {
-      // Hide remove button
-      removeKeyBtn?.classList.add('hidden');
-      if (apiStatusChip) {
-        apiStatusChip.textContent = 'Not connected';
-        apiStatusChip.classList.remove('connected');
-      }
-    }
-  }
-
-  /**
-   * Toggle BYOK configuration panel
-   */
-  toggleBYOKConfig() {
-    const configPanel = document.getElementById('byok-config');
-    configPanel?.classList.toggle('hidden');
-
-    const toggleBtn = document.getElementById('toggle-byok');
-    if (toggleBtn) {
-      toggleBtn.textContent = configPanel?.classList.contains('hidden') ? 'Show form' : 'Hide form';
-    }
+      clearButton?.classList.toggle('hidden', !configured);
+    });
   }
 
   /**
    * Save API key
    */
-  async saveAPIKey() {
-    const apiKeyInput = document.getElementById('gemini-api-key');
+  async saveAPIKey(provider) {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    const apiKeyInput = document.getElementById(`${provider}-api-key`);
     const apiKey = apiKeyInput?.value?.trim();
 
     if (!apiKey) {
-      this.showStatus('Please enter an API key', 'error');
+      this.showStatus(`Enter a ${label} API key`, 'error');
       return;
     }
 
-    const saveBtn = document.getElementById('save-api-key');
+    const saveBtn = document.querySelector(`.save-provider-key[data-provider="${provider}"]`);
     if (saveBtn) {
       saveBtn.textContent = 'Validating...';
       saveBtn.disabled = true;
@@ -224,12 +208,12 @@ class PopupController {
 
     try {
       const response = await browserCompat.sendMessage({
-        action: 'activateBYOK',
-        data: { apiKey }
+        action: 'saveProviderKey',
+        data: { provider, apiKey }
       });
 
       if (response.success) {
-        this.showStatus('✓ API key saved successfully!', 'success');
+        this.showStatus(`${label} API key saved`, 'success');
 
         // Clear input
         if (apiKeyInput) apiKeyInput.value = '';
@@ -237,11 +221,6 @@ class PopupController {
         // Reload data and update UI
         await this.loadData();
         this.updateUI();
-
-        // Hide config panel after success
-        setTimeout(() => {
-          this.toggleBYOKConfig();
-        }, 2000);
       } else {
         this.showStatus(`Failed: ${response.error || 'Unknown error'}`, 'error');
       }
@@ -250,7 +229,7 @@ class PopupController {
       this.showStatus('Failed to save API key', 'error');
     } finally {
       if (saveBtn) {
-        saveBtn.textContent = 'Validate & save';
+        saveBtn.textContent = 'Save';
         saveBtn.disabled = false;
         saveBtn.removeAttribute('aria-busy');
       }
@@ -260,18 +239,20 @@ class PopupController {
   /**
    * Remove API key
    */
-  async removeAPIKey() {
-    if (!confirm('Remove your API key?')) {
+  async removeAPIKey(provider) {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    if (!confirm(`Clear the ${label} API key?`)) {
       return;
     }
 
     try {
       const response = await browserCompat.sendMessage({
-        action: 'deactivateBYOK'
+        action: 'clearProviderKey',
+        data: { provider }
       });
 
       if (response.success) {
-        this.showStatus('✓ API key removed', 'success');
+        this.showStatus(`${label} API key cleared`, 'success');
 
         // Reload data and update UI
         await this.loadData();
@@ -288,20 +269,102 @@ class PopupController {
   /**
    * Toggle API key visibility
    */
-  toggleKeyVisibility() {
-    const apiKeyInput = document.getElementById('gemini-api-key');
-    const toggleBtn = document.getElementById('toggle-key-visibility');
+  toggleKeyVisibility(provider) {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    const apiKeyInput = document.getElementById(`${provider}-api-key`);
+    const toggleBtn = document.querySelector(`.toggle-provider-key[data-provider="${provider}"]`);
 
     if (apiKeyInput && toggleBtn) {
       if (apiKeyInput.type === 'password') {
         apiKeyInput.type = 'text';
         toggleBtn.textContent = 'Hide';
-        toggleBtn.setAttribute('aria-label', 'Hide API key');
+        toggleBtn.setAttribute('aria-label', `Hide ${label} API key`);
       } else {
         apiKeyInput.type = 'password';
         toggleBtn.textContent = 'Show';
-        toggleBtn.setAttribute('aria-label', 'Show API key');
+        toggleBtn.setAttribute('aria-label', `Show ${label} API key`);
       }
+    }
+  }
+
+  async saveProviderMode(providerMode) {
+    try {
+      const response = await browserCompat.sendMessage({
+        action: 'setProviderMode',
+        data: { providerMode }
+      });
+      if (!response?.success) throw new Error(response?.error || 'Failed to save provider');
+      await this.loadData();
+      this.updateUI();
+    } catch (error) {
+      this.showStatus('Failed to save provider selection', 'error');
+    }
+  }
+
+  isSettingsOpen() {
+    const layer = document.getElementById('settings-layer');
+    return layer?.getAttribute('aria-hidden') === 'false';
+  }
+
+  openSettingsPanel() {
+    const layer = document.getElementById('settings-layer');
+    const panel = document.getElementById('settings-panel');
+    const opener = document.getElementById('open-settings');
+    if (!layer || !panel || this.isSettingsOpen()) return;
+
+    this.lastFocusedElement = document.activeElement;
+    layer.setAttribute('aria-hidden', 'false');
+    panel.setAttribute('aria-hidden', 'false');
+    opener?.setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', this.handleSettingsKeydown);
+
+    setTimeout(() => {
+      const input = document.getElementById('provider-mode');
+      (input || panel.querySelector('button, input, select, textarea, a[href]'))?.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  closeSettingsPanel() {
+    const layer = document.getElementById('settings-layer');
+    const panel = document.getElementById('settings-panel');
+    const opener = document.getElementById('open-settings');
+    if (!layer || !panel || !this.isSettingsOpen()) return;
+
+    layer.setAttribute('aria-hidden', 'true');
+    panel.setAttribute('aria-hidden', 'true');
+    opener?.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', this.handleSettingsKeydown);
+
+    const focusTarget = this.lastFocusedElement?.isConnected ? this.lastFocusedElement : opener;
+    this.lastFocusedElement = null;
+    focusTarget?.focus({ preventScroll: true });
+  }
+
+  handleSettingsKeydown(event) {
+    if (!this.isSettingsOpen()) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closeSettingsPanel();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+
+    const panel = document.getElementById('settings-panel');
+    const focusable = [...(panel?.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || [])].filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+    if (!focusable.length) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
     }
   }
 
@@ -325,6 +388,17 @@ class PopupController {
 
     const contextWindow = document.getElementById('context-window');
     if (contextWindow) contextWindow.value = this.settings.contextWindow;
+    const conversationAwareness = document.getElementById('conversation-awareness');
+    if (conversationAwareness) {
+      conversationAwareness.checked = this.settings.conversationAwareness !== false;
+    }
+    this.updateContextControlState();
+  }
+
+  updateContextControlState() {
+    const enabled = document.getElementById('conversation-awareness')?.checked !== false;
+    const contextWindow = document.getElementById('context-window');
+    if (contextWindow) contextWindow.disabled = !enabled;
   }
 
   /**
@@ -332,6 +406,7 @@ class PopupController {
    */
   async saveSettings() {
     const contextWindowValue = parseInt(document.getElementById('context-window')?.value, 10);
+    const conversationAwareness = document.getElementById('conversation-awareness')?.checked !== false;
     const templateType = document.querySelector('input[name="prompt-template"]:checked')?.value || 'standard';
     const customTemplate = document.getElementById('custom-template-input')?.value?.trim() || '';
 
@@ -341,6 +416,7 @@ class PopupController {
 
     const newSettings = {
       ...this.settings,
+      conversationAwareness,
       contextWindow: resolvedContextWindow,
       promptTemplateType: templateType,
       customPromptTemplate: customTemplate
@@ -388,10 +464,12 @@ class PopupController {
    */
   checkForChanges() {
     const currentContextWindow = parseInt(document.getElementById('context-window')?.value, 10);
+    const currentConversationAwareness = document.getElementById('conversation-awareness')?.checked !== false;
     const currentTemplate = document.querySelector('input[name="prompt-template"]:checked')?.value || 'standard';
     const currentCustomTemplate = document.getElementById('custom-template-input')?.value?.trim() || '';
     
     const hasChanges = 
+      currentConversationAwareness !== (this.originalSettings.conversationAwareness !== false) ||
       currentContextWindow !== this.originalSettings.contextWindow ||
       currentTemplate !== this.originalSettings.promptTemplateType ||
       currentCustomTemplate !== this.originalSettings.customPromptTemplate;
@@ -406,14 +484,10 @@ class PopupController {
     }
   }
   
-  /**
-   * Show the save bar
-   */
   showSaveBar() {
     const saveBar = document.getElementById('save-bar');
-    if (saveBar) {
-      saveBar.classList.remove('hidden');
-    }
+    if (!saveBar) return;
+    saveBar.classList.remove('hidden');
   }
   
   /**
@@ -457,16 +531,30 @@ class PopupController {
   }
 
   /**
-   * Update usage statistics
+   * Update usage — render as a single sentence so the numbers
+   * carry context instead of standing as a stat monument.
    */
   updateStats(stats) {
-    if (!stats) return;
+    const target = document.getElementById('usage-sentence');
+    if (!target) return;
 
-    const totalElem = document.getElementById('total-enhancements');
-    const byokElem = document.getElementById('byok-enhancements');
+    const total = Number(stats?.totalEnhancements) || 0;
+    const byok = Number(stats?.byokEnhancements) || 0;
 
-    if (totalElem) totalElem.textContent = stats.totalEnhancements || 0;
-    if (byokElem) byokElem.textContent = stats.byokEnhancements || 0;
+    if (total === 0 && byok === 0) {
+      renderStaticHTML(target, '<span class="usage-sentence-empty">No enhancements yet.</span>');
+      return;
+    }
+
+    const totalLabel = total === 1 ? 'enhancement' : 'enhancements';
+    const byokFragment = byok > 0
+      ? ' &middot; <span class="usage-sentence-byok"><span class="usage-sentence-value">' + byok + '</span> with your own key</span>'
+      : '';
+
+    renderStaticHTML(
+      target,
+      '<span class="usage-sentence-value">' + total + '</span> ' + totalLabel + byokFragment + '.'
+    );
   }
 
   /**
@@ -488,7 +576,6 @@ class PopupController {
     try {
       const result = await browserCompat.storageGet(['managedSites']);
       this.managedSites = result.managedSites || [];
-      console.log('[APE Popup] Loaded managed sites:', this.managedSites);
     } catch (error) {
       console.error('[APE Popup] Failed to load managed sites:', error);
       this.managedSites = [];
@@ -501,7 +588,6 @@ class PopupController {
   async saveManagedSites() {
     try {
       await browserCompat.storageSet({ managedSites: this.managedSites });
-      console.log('[APE Popup] Saved managed sites:', this.managedSites);
       return true;
     } catch (error) {
       console.error('[APE Popup] Failed to save managed sites:', error);
@@ -537,7 +623,6 @@ class PopupController {
 
       siteNameElem.textContent = this.getFriendlyName(hostname);
       siteUrlElem.textContent = hostname;
-
       toggleBtn.disabled = false;
       toggleBtn.classList.toggle('enabled', isEnabled);
       toggleBtn.querySelector('.toggle-site-text').textContent = isEnabled ? 'Turn off' : 'Turn on';
@@ -636,7 +721,7 @@ class PopupController {
     try {
       await chrome.tabs.reload(this.currentTab.id);
     } catch (error) {
-      console.log('[APE Popup] Failed to reload tab:', error);
+      if (globalThis.__APE_DEBUG__ === true) console.warn('[APE Popup] Failed to reload tab:', error);
     }
   }
 
@@ -668,7 +753,7 @@ class PopupController {
     try {
       await chrome.tabs.reload(this.currentTab.id);
     } catch (error) {
-      console.log('[APE Popup] Failed to reload tab:', error);
+      if (globalThis.__APE_DEBUG__ === true) console.warn('[APE Popup] Failed to reload tab:', error);
     }
   }
 
@@ -693,7 +778,7 @@ class PopupController {
         try {
           await chrome.tabs.reload(this.currentTab.id);
         } catch (error) {
-          console.log('[APE Popup] Failed to reload tab:', error);
+          if (globalThis.__APE_DEBUG__ === true) console.warn('[APE Popup] Failed to reload tab:', error);
         }
       }
     }
@@ -726,7 +811,9 @@ class PopupController {
           <div class="managed-site-details">
             <div class="managed-site-name">${sanitizeHTML(site.name || site.hostname)}</div>
             <div class="managed-site-status ${site.enabled ? 'enabled' : 'disabled'}">
-              ${site.enabled ? 'On' : 'Off'} · ${this.formatPlacement(site.placement)}
+              <span class="managed-site-state">${site.enabled ? 'On' : 'Off'}</span>
+              <span aria-hidden="true">·</span>
+              <span class="managed-site-placement">${this.formatPlacement(site.placement)}</span>
             </div>
           </div>
         </div>

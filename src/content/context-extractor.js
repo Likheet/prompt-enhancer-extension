@@ -5,7 +5,6 @@
 
 import {
   extractKeywords,
-  hashString,
   detectIntent
 } from '../shared/utils.js';
 
@@ -14,36 +13,70 @@ class ContextExtractor {
     this.domObserver = domObserver;
     this.maxContextLength = 4000;
     this.contextWindow = 10;
+    this.conversationAwareness = true;
   }
 
   /**
    * Extract full context for enhancement
    */
   async extractFullContext() {
+    const startedAt = this.now();
+    const promptStartedAt = this.now();
     const currentPrompt = await this.domObserver.extractPromptText();
-    const conversationHistory = this.extractConversationHistory();
+    const promptCollectionMs = this.now() - promptStartedAt;
+    let conversationHistory = [];
+    const historyStartedAt = this.now();
+
+    try {
+      conversationHistory = this.extractConversationHistory();
+    } catch (error) {
+      console.warn(
+        '[APE] Conversation history unavailable; continuing without it.',
+        error?.message || String(error)
+      );
+    }
+    const conversationHistoryCollectionMs = this.now() - historyStartedAt;
+
+    const metadataStartedAt = this.now();
     const metadata = this.extractMetadata(currentPrompt, conversationHistory);
+    const metadataPreparationMs = this.now() - metadataStartedAt;
+    const historyDiagnostics = this.domObserver.getMessageExtractionDiagnostics?.() || null;
 
     return {
       currentPrompt,
       conversationHistory,
       metadata,
       platform: this.domObserver.platform,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      historyDiagnostics,
+      collectionTimings: {
+        promptCollectionMs,
+        conversationHistoryCollectionMs,
+        metadataPreparationMs,
+        contentContextPreparationMs: this.now() - startedAt
+      }
     };
+  }
+
+  now() {
+    return globalThis.performance?.now?.() ?? Date.now();
   }
 
   /**
    * Extract and process conversation history
    */
   extractConversationHistory() {
-    const messages = this.domObserver.extractMessages();
+    if (!this.conversationAwareness) return [];
 
-    // Deduplicate messages
+    // Over-scan a small multiple to accommodate nested platform wrappers,
+    // while avoiding work proportional to an entire long conversation.
+    const extractionLimit = Math.min(60, this.contextWindow * 3);
+    const messages = this.domObserver.extractMessages(extractionLimit);
+    if (!Array.isArray(messages)) return [];
+
+    // Message extraction already follows DOM order. Keep that order because
+    // host timestamps are often missing, duplicated, or attached to wrappers.
     const uniqueMessages = this.deduplicateMessages(messages);
-
-    // Sort by timestamp
-    uniqueMessages.sort((a, b) => a.timestamp - b.timestamp);
 
     // Take last N messages
     const recentMessages = uniqueMessages.slice(-this.contextWindow);
@@ -56,18 +89,38 @@ class ContextExtractor {
   }
 
   /**
-   * Deduplicate messages by content
+   * Collapse overlapping DOM nodes for one rendered turn without removing
+   * legitimate repeated turns or user/assistant echoes.
    */
   deduplicateMessages(messages) {
-    const seen = new Map();
     const unique = [];
+    const candidateIndexes = new Map();
 
     for (const msg of messages) {
-      const hash = hashString(msg.content);
+      const key = `${msg.role}\u0000${msg.content}`;
+      const matchingIndexes = candidateIndexes.get(key) || [];
+      const duplicateIndex = matchingIndexes.find((index) => {
+        const existing = unique[index];
+        const existingElement = existing.element;
+        const candidateElement = msg.element;
+        if (!existingElement || !candidateElement) return false;
 
-      if (!seen.has(hash)) {
-        seen.set(hash, true);
+        return existingElement === candidateElement ||
+          existingElement.contains?.(candidateElement) ||
+          candidateElement.contains?.(existingElement);
+      });
+
+      if (duplicateIndex === undefined) {
+        matchingIndexes.push(unique.length);
+        candidateIndexes.set(key, matchingIndexes);
         unique.push(msg);
+        continue;
+      }
+
+      const existingElement = unique[duplicateIndex].element;
+      if (existingElement?.contains?.(msg.element)) {
+        // Prefer the narrower node; wrappers commonly include action labels.
+        unique[duplicateIndex] = msg;
       }
     }
 
@@ -78,15 +131,40 @@ class ContextExtractor {
    * Extract metadata about the conversation
    */
   extractMetadata(currentPrompt, conversationHistory) {
+    const analysisText = this.buildMetadataText(currentPrompt, conversationHistory);
+
     return {
       topic: this.extractTopic(conversationHistory),
       intent: currentPrompt ? detectIntent(currentPrompt) : 'general',
-      hasCode: this.detectCodeContent(),
-      language: this.detectProgrammingLanguage(),
+      hasCode: this.detectCodeContent(analysisText),
+      language: this.detectProgrammingLanguage(analysisText),
       messageCount: conversationHistory.length,
-      complexity: this.estimateComplexity(currentPrompt),
+      complexity: this.estimateComplexity(currentPrompt, analysisText),
       keywords: currentPrompt ? extractKeywords(currentPrompt) : []
     };
+  }
+
+  /**
+   * Build a bounded, recent-context sample for local metadata detection.
+   */
+  buildMetadataText(currentPrompt, conversationHistory) {
+    const prompt = String(currentPrompt || '').slice(0, this.maxContextLength);
+    let remaining = Math.max(0, this.maxContextLength - prompt.length);
+    const historyParts = [];
+
+    for (let index = conversationHistory.length - 1; index >= 0 && remaining > 0; index -= 1) {
+      const content = String(conversationHistory[index]?.content || '').trim();
+      if (!content) continue;
+
+      const separatorLength = historyParts.length > 0 || prompt ? 1 : 0;
+      if (remaining <= separatorLength) break;
+
+      const available = remaining - separatorLength;
+      historyParts.unshift(content.slice(-available));
+      remaining -= Math.min(content.length, available) + separatorLength;
+    }
+
+    return [...historyParts, prompt].filter(Boolean).join('\n');
   }
 
   /**
@@ -116,8 +194,8 @@ class ContextExtractor {
   /**
    * Detect if conversation contains code
    */
-  detectCodeContent() {
-    const pageText = document.body.innerText.toLowerCase();
+  detectCodeContent(content = '') {
+    const pageText = String(content).toLowerCase();
 
     const codeIndicators = [
       '```',
@@ -141,8 +219,8 @@ class ContextExtractor {
   /**
    * Detect programming language
    */
-  detectProgrammingLanguage() {
-    const content = document.body.innerText.toLowerCase();
+  detectProgrammingLanguage(content = '') {
+    const normalizedContent = String(content).toLowerCase();
 
     const patterns = {
       python: /\b(def |import |from |print\(|if __name__|\.py\b|django|flask|pandas)/,
@@ -163,7 +241,7 @@ class ContextExtractor {
     };
 
     for (const [lang, pattern] of Object.entries(patterns)) {
-      if (pattern.test(content)) {
+      if (pattern.test(normalizedContent)) {
         return lang;
       }
     }
@@ -174,7 +252,7 @@ class ContextExtractor {
   /**
    * Estimate prompt complexity
    */
-  estimateComplexity(prompt) {
+  estimateComplexity(prompt, analysisText = prompt) {
     if (!prompt) return 0;
 
     let score = 0;
@@ -202,7 +280,7 @@ class ContextExtractor {
     else if (sentences.length > 1) score += 0.1;
 
     // Code-related (often more specific requirements)
-    if (this.detectCodeContent()) {
+    if (this.detectCodeContent(analysisText)) {
       score += 0.1;
     }
 
@@ -330,7 +408,14 @@ class ContextExtractor {
    * Update context window size
    */
   setContextWindow(size) {
-    this.contextWindow = Math.max(1, Math.min(20, size));
+    const parsed = Number(size);
+    this.contextWindow = Number.isFinite(parsed)
+      ? Math.max(1, Math.min(20, Math.floor(parsed)))
+      : 10;
+  }
+
+  setConversationAwareness(enabled) {
+    this.conversationAwareness = enabled !== false;
   }
 }
 

@@ -29,14 +29,13 @@ Choose the perfect enhancement style for your needs:
 - **Enhancement Presets**: Visual cards to select your preferred style
 - **Custom Instructions**: Write your own enhancement rules
 - **Keyboard Shortcuts**: Configure Alt+1/2/3 to your favorite presets
-- **BYOK Support**: Use your own Gemini API key for AI-powered enhancements
+- **BYOK Support**: Use your own Gemini or Groq API key for AI-powered enhancements
 - **Usage Statistics**: Track your enhancement count
 
 ### 🔐 **Flexible Subscription Model**
-- **Free Tier**: Intelligent rule-based enhancement
-- **BYOK (Bring Your Own Key)**: AI-powered with your Gemini API key
-  - Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-  - Pay only for what you use (Google's pricing)
+- **BYOK (Bring Your Own Key)**: AI-powered with either provider key
+  - Get a Gemini key from [Google AI Studio](https://aistudio.google.com/app/apikey) or a Groq key from [GroqCloud](https://console.groq.com/keys)
+  - Pay only for what you use under the selected provider's pricing
   - Full control of your data
 
 ---
@@ -88,9 +87,9 @@ Choose the perfect enhancement style for your needs:
 
 ### AI-Powered (BYOK Tier)
 
-1. **Get a Gemini API Key**:
-   - Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-   - Click "Create API Key"
+1. **Get one API key**:
+   - Visit [Google AI Studio](https://aistudio.google.com/app/apikey) or [GroqCloud](https://console.groq.com/keys)
+   - Create an API key
    - Copy your key
 
 2. **Configure Extension**:
@@ -168,14 +167,16 @@ Access full settings: **Right-click extension icon → Options**
 - Alt+C always opens custom editor (not configurable)
 
 ### API Configuration
-- **BYOK (Gemini)**: Paste your API key
+- **Provider**: Auto, Gemini, or Groq
+- **BYOK**: Configure either key independently
 - Validation on save
 - Secure local storage
 - Remove anytime
 
 ### General Settings
 - **Enhancement Level**: Light / Moderate / Aggressive
-- **Context Window**: 1-20 previous messages to consider
+- **Conversation Awareness**: Include or exclude recent chat turns during enhancement
+- **Context Window**: 1-20 previous user and assistant messages to consider when awareness is enabled
 - **Auto-enhance**: Enable/disable auto-enhancement
 - **Show Diff**: Toggle diff view (future feature)
 
@@ -230,6 +231,7 @@ prompt-enhancer-extension/
 ├── src/
 │   ├── background/
 │   │   ├── service-worker.js         # Background service worker
+│   │   ├── enhancement-context.js    # Privacy-aware context normalization
 │   │   └── subscription-manager.js   # Subscription handling
 │   ├── content/
 │   │   ├── main.js                   # Content script entry point
@@ -263,18 +265,18 @@ prompt-enhancer-extension/
 
 ## 🔒 Privacy & Security
 
-- **No Data Collection**: We don't collect, store, or transmit your prompts or conversations
-- **Local Processing**: Free tier enhancement happens entirely in your browser
-- **Local Storage**: API keys remain in browser extension storage and are masked in the UI
-- **HTTPS Only**: All API calls use encrypted connections
-- **No Remote Code**: No code is loaded from external servers
-- **Open Source**: Full source code available for audit
+- **No publisher telemetry backend**: The extension does not send prompts, conversation text, or API keys to a server operated by this project.
+- **Explicit BYOK processing**: When a provider key is configured, the current prompt and a bounded selection of recent/relevant conversation turns are sent directly to the selected provider. Conversation text is omitted when conversation awareness is disabled.
+- **Local key storage**: API keys are held separately in trusted browser-extension-local storage and are never returned to page content scripts or placed into DOM attributes.
+- **HTTPS only**: Provider requests use encrypted connections and put the selected provider's key in an authentication header rather than the URL.
+- **No remote code**: No executable code is loaded from external servers.
+- **Open source**: Full source code is available for audit.
 
 ### BYOK Privacy
-- Your API key never leaves your device (except to call Gemini)
-- Prompts sent directly to Google's Gemini API (your account)
-- We never see your prompts or API usage
-- You control your data and billing
+- A provider key is sent only to its matching provider endpoint to authenticate requests.
+- The source prompt and selected context are sent only to the single provider selected for that enhancement.
+- This project does not proxy or retain those requests.
+- You control the key, provider account, data terms, and billing.
 
 ---
 
@@ -337,12 +339,14 @@ See [TESTING.md](./TESTING.md) for comprehensive testing guide.
 ## 📊 Technical Details
 
 ### Enhancement Process
-1. **Context Extraction**: Analyzes last N messages (configurable)
-2. **Intent Detection**: Identifies prompt type (question, code, creative, etc.)
-3. **Preset Selection**: Applies selected enhancement preset
-4. **Enhancement**: Uses rule-based or AI-powered enhancement
-5. **Injection**: Replaces original text in chatbox
-6. **Feedback**: Shows success toast with notification
+1. **Context extraction**: Platform-specific selectors with a generic fallback collect the current draft and a bounded recent set of visible, completed user/assistant turns when conversation awareness is enabled. Hidden controls, active composers, unknown roles, and streaming messages are excluded.
+2. **Worker normalization**: The background worker revalidates roles, removes a duplicated current draft, spends the character budget on the newest turns first, and removes all history when awareness is disabled.
+3. **Request construction**: Stable editing rules, settings, a recent/relevant history selection, and the source prompt are formatted once, then encoded for Gemini or Groq. Gemini uses minimal thinking for this lightweight transformation.
+4. **Enhancement**: Exactly one request is sent to the resolved provider. Responses are parsed by provider and normalized before validation.
+5. **Fallback and cancellation**: A missing key stops with a settings message. A classified failure from the selected provider can use the local rules as a visible fallback; cancellation never does.
+6. **Safe injection**: The result replaces the draft only if the user has not edited it while the request was running. Usage tracking does not delay the visible completion state.
+
+Conversation extraction is resilient rather than universal: supported platforms use maintained selectors, while other chat sites use semantic and class-based fallbacks. Sites can change or virtualize their DOM, so coverage is verified with platform fixtures and updated as layouts evolve.
 
 ### Supported Platforms
 - **ChatGPT**: Both chat.openai.com and chatgpt.com domains
@@ -351,10 +355,10 @@ See [TESTING.md](./TESTING.md) for comprehensive testing guide.
 - Adapts to UI changes automatically
 
 ### API Usage (BYOK)
-- **Provider**: Google Gemini (`gemini-3.5-flash`)
-- **Rate Limits**: Governed by your Google account
-- **Pricing**: See [Google's pricing](https://ai.google.dev/pricing)
-- **Fallback**: Automatic fallback to rule-based on errors
+- **Providers**: Google Gemini (`gemini-3.1-flash-lite`) and optional Groq (`llama-3.1-8b-instant`)
+- **Selection**: One configured key is sufficient; Auto prefers Gemini by default and never races providers
+- **Rate Limits and pricing**: Governed by the selected provider account
+- **Fallback**: Classified local fallback for genuine provider failures; cancellation and missing-key configuration errors remain explicit
 
 ---
 
@@ -414,7 +418,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with insights from the AI prompt engineering community
 - Inspired by Grammarly's approach to writing assistance
-- Uses Google's Gemini API for AI-powered enhancement (BYOK tier)
+- Supports Google Gemini and Groq for BYOK prompt enhancement
 - Special thanks to all contributors and testers
 
 ---

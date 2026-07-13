@@ -24,6 +24,9 @@ class OptionsPage {
     // Load current settings
     await this.loadSettings();
     await this.loadSubscriptionInfo();
+    delete this.settings.geminiKey;
+    delete this.settings.geminiApiKey;
+    delete this.settings.groqApiKey;
 
     // Populate UI
     this.populateEnhancementTypes();
@@ -59,7 +62,12 @@ class OptionsPage {
       });
     } catch (error) {
       console.error('[Options] Failed to load subscription status:', error);
-      this.subscriptionInfo = { type: 'free', active: true, hasApiKey: false };
+      this.subscriptionInfo = {
+        type: 'free',
+        active: true,
+        providerMode: 'auto',
+        providers: { gemini: { configured: false }, groq: { configured: false } }
+      };
     }
   }
 
@@ -193,29 +201,10 @@ class OptionsPage {
       customPromptTextarea.value = this.settings.customEnhancementPrompt || '';
     }
 
-    // API key
-    const apiKeyInput = document.getElementById('gemini-api-key');
-    if (apiKeyInput) {
-      const hasBYOK = this.subscriptionInfo?.type === 'byok' &&
-        this.subscriptionInfo?.active &&
-        this.subscriptionInfo?.hasApiKey;
-      const legacyKey = this.settings.geminiKey || this.settings.geminiApiKey || '';
-
-      apiKeyInput.value = hasBYOK ? '' : legacyKey;
-      if (hasBYOK && this.subscriptionInfo.apiKeyMasked) {
-        apiKeyInput.placeholder = `Saved key (${this.subscriptionInfo.apiKeyMasked})`;
-      }
-
-      // Show/hide remove button
-      const removeBtn = document.getElementById('remove-api-key');
-      if (hasBYOK) {
-        removeBtn.style.display = 'inline-block';
-        this.updateSubscriptionStatus(true);
-      } else {
-        removeBtn.style.display = 'none';
-        this.updateSubscriptionStatus(false);
-      }
-    }
+    const providerMode = document.getElementById('provider-mode');
+    if (providerMode) providerMode.value = this.subscriptionInfo?.providerMode || 'auto';
+    ['gemini', 'groq'].forEach((provider) => this.updateProviderStatus(provider));
+    this.updateSubscriptionStatus(this.subscriptionInfo?.type === 'byok');
 
   }
 
@@ -264,29 +253,24 @@ class OptionsPage {
       }
     });
 
-    // API key toggle
-    const toggleApiKeyBtn = document.getElementById('toggle-api-key');
-    if (toggleApiKeyBtn) {
-      toggleApiKeyBtn.addEventListener('click', () => {
-        this.toggleApiKeyVisibility();
+    document.querySelectorAll('.toggle-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.toggleApiKeyVisibility(button.dataset.provider));
+    });
+    document.querySelectorAll('.save-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.handleSaveApiKey(button.dataset.provider));
+    });
+    document.querySelectorAll('.clear-provider-key').forEach((button) => {
+      button.addEventListener('click', () => this.handleRemoveApiKey(button.dataset.provider));
+    });
+    document.getElementById('provider-mode')?.addEventListener('change', async (event) => {
+      const response = await browserCompat.sendMessage({
+        action: 'setProviderMode',
+        data: { providerMode: event.target.value }
       });
-    }
-
-    // Save API key
-    const saveApiKeyBtn = document.getElementById('save-api-key');
-    if (saveApiKeyBtn) {
-      saveApiKeyBtn.addEventListener('click', async () => {
-        await this.handleSaveApiKey();
-      });
-    }
-
-    // Remove API key
-    const removeApiKeyBtn = document.getElementById('remove-api-key');
-    if (removeApiKeyBtn) {
-      removeApiKeyBtn.addEventListener('click', async () => {
-        await this.handleRemoveApiKey();
-      });
-    }
+      if (!response?.success) this.showStatus('Failed to save provider selection', 'error');
+      await this.loadSubscriptionInfo();
+      this.populateSettings();
+    });
 
     // General settings
     const enhancementLevel = document.getElementById('enhancement-level');
@@ -425,66 +409,52 @@ class OptionsPage {
   /**
    * Toggle API key visibility
    */
-  toggleApiKeyVisibility() {
-    const input = document.getElementById('gemini-api-key');
-    const icon = document.getElementById('eye-icon');
+  toggleApiKeyVisibility(provider) {
+    const input = document.getElementById(`${provider}-api-key`);
+    const button = document.querySelector(`.toggle-provider-key[data-provider="${provider}"]`);
 
     if (input.type === 'password') {
       input.type = 'text';
-      icon.textContent = '👁️‍🗨️';
+      button.textContent = 'Hide';
     } else {
       input.type = 'password';
-      icon.textContent = '👁️';
+      button.textContent = 'Show';
     }
   }
 
   /**
    * Handle save API key
    */
-  async handleSaveApiKey() {
-    const input = document.getElementById('gemini-api-key');
+  async handleSaveApiKey(provider) {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    const input = document.getElementById(`${provider}-api-key`);
     const apiKey = input.value.trim();
 
     if (!apiKey) {
-      this.showStatus('Please enter an API key', 'error');
-      return;
-    }
-
-    // Validate API key format
-    if (!apiKey.startsWith('AIza')) {
-      this.showStatus('Invalid API key format. Should start with "AIza"', 'error');
+      this.showStatus(`Please enter a ${label} API key`, 'error');
       return;
     }
 
     // Show loading
-    const saveBtn = document.getElementById('save-api-key');
+    const saveBtn = document.querySelector(`.save-provider-key[data-provider="${provider}"]`);
     const originalText = saveBtn.textContent;
     saveBtn.textContent = 'Validating...';
     saveBtn.disabled = true;
 
     try {
       const response = await browserCompat.sendMessage({
-        action: 'activateBYOK',
-        data: { apiKey }
+        action: 'saveProviderKey',
+        data: { provider, apiKey }
           });
 
           if (response?.success) {
-            delete this.settings.geminiKey;
-            delete this.settings.geminiApiKey;
-            this.settings.subscriptionType = 'byok';
-
-            await this.saveSettings();
             await this.loadSubscriptionInfo();
 
-            // Update UI
             input.value = '';
-            input.placeholder = this.subscriptionInfo?.apiKeyMasked
-              ? `Saved key (${this.subscriptionInfo.apiKeyMasked})`
-              : 'API key saved';
-            document.getElementById('remove-api-key').style.display = 'inline-block';
-        this.updateSubscriptionStatus(true);
+            this.updateProviderStatus(provider);
+            this.updateSubscriptionStatus(true);
 
-        this.showStatus('API key saved successfully! 🎉', 'success');
+        this.showStatus(`${label} API key saved`, 'success');
       } else {
         this.showStatus(response?.error || 'API key validation failed. Please check your key.', 'error');
       }
@@ -500,22 +470,22 @@ class OptionsPage {
   /**
    * Handle remove API key
    */
-  async handleRemoveApiKey() {
-    if (!confirm('Are you sure you want to remove your API key? You will revert to the free tier.')) {
+  async handleRemoveApiKey(provider) {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    if (!confirm(`Clear the ${label} API key?`)) {
       return;
     }
 
     try {
-      const response = await browserCompat.sendMessage({ action: 'deactivateBYOK' });
+      const response = await browserCompat.sendMessage({
+        action: 'clearProviderKey',
+        data: { provider }
+      });
       if (!response?.success) {
         throw new Error(response?.error || 'Failed to deactivate BYOK');
       }
 
-          delete this.settings.geminiKey;
-          delete this.settings.geminiApiKey;
-          this.settings.subscriptionType = 'free';
-          await this.saveSettings();
-          this.subscriptionInfo = { type: 'free', active: true, hasApiKey: false };
+      await this.loadSubscriptionInfo();
     } catch (error) {
       console.error('[Options] Failed to remove API key:', error);
       this.showStatus('Failed to remove API key', 'error');
@@ -523,13 +493,20 @@ class OptionsPage {
     }
 
         // Update UI
-        const apiKeyInput = document.getElementById('gemini-api-key');
-        apiKeyInput.value = '';
-        apiKeyInput.placeholder = 'AIza...';
-    document.getElementById('remove-api-key').style.display = 'none';
-    this.updateSubscriptionStatus(false);
+    const apiKeyInput = document.getElementById(`${provider}-api-key`);
+    apiKeyInput.value = '';
+    this.updateProviderStatus(provider);
+    this.updateSubscriptionStatus(this.subscriptionInfo?.type === 'byok');
 
-    this.showStatus('API key removed. Switched to free tier.', 'info');
+    this.showStatus(`${label} API key cleared`, 'info');
+  }
+
+  updateProviderStatus(provider) {
+    const configured = Boolean(this.subscriptionInfo?.providers?.[provider]?.configured);
+    const status = document.getElementById(`${provider}-provider-status`);
+    const clearButton = document.querySelector(`.clear-provider-key[data-provider="${provider}"]`);
+    if (status) status.textContent = configured ? 'Configured' : 'Not configured';
+    if (clearButton) clearButton.style.display = configured ? 'inline-block' : 'none';
   }
 
   /**
@@ -542,11 +519,14 @@ class OptionsPage {
     if (hasByok) {
       badge.textContent = 'BYOK Tier';
       badge.className = 'subscription-badge byok';
-      status.textContent = 'Using AI-powered enhancement with Gemini';
+      const provider = this.subscriptionInfo?.actualProvider;
+      status.textContent = provider
+        ? `Using AI-powered enhancement with ${provider === 'groq' ? 'Groq' : 'Gemini'}`
+        : 'AI provider configured';
     } else {
       badge.textContent = 'Free Tier';
       badge.className = 'subscription-badge free';
-      status.textContent = 'Using rule-based enhancement';
+      status.textContent = 'Add a Gemini or Groq API key to enhance prompts';
     }
   }
 
@@ -573,8 +553,12 @@ class OptionsPage {
    */
   async saveSettings() {
     try {
+      const publicSettings = { ...this.settings };
+      delete publicSettings.geminiKey;
+      delete publicSettings.geminiApiKey;
+      delete publicSettings.groqApiKey;
       await browserCompat.storageSet({
-        [STORAGE_KEYS.SETTINGS]: this.settings
+        [STORAGE_KEYS.SETTINGS]: publicSettings
       });
       console.log('[Options] Settings saved');
     } catch (error) {

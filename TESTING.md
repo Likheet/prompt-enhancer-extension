@@ -22,7 +22,7 @@ npm run test:e2e
 - Correct usage counting.
 - Options and popup pages loading without browser errors.
 
-The browser smoke test uses a local fixture and does not call Gemini or require an API key.
+The browser smoke tests use mocked provider responses and do not call Gemini or Groq or require a real API key.
 
 ## Manual Chrome check
 
@@ -34,4 +34,4 @@ The browser smoke test uses a local fixture and does not call Gemini or require 
 6. Click the button and confirm the prompt changes without being sent automatically.
 7. Replace or reload the page composer through normal navigation and confirm the button reappears.
 
-For BYOK testing, use your own active Gemini key. Never commit keys to source files, fixtures, screenshots, or logs.
+For real BYOK smoke testing, use your own active Gemini or Groq key. Never commit keys to source files, fixtures, screenshots, or logs, and test each provider separately.

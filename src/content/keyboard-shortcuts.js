@@ -4,7 +4,6 @@
  */
 
 import browserCompat from '../shared/browser-compat.js';
-import { STORAGE_KEYS } from '../shared/constants.js';
 import { renderStaticHTML } from '../shared/utils.js';
 
 class KeyboardShortcuts {
@@ -15,6 +14,7 @@ class KeyboardShortcuts {
     this.quickEditorOpen = false;
     this.initialized = false;
     this.boundHandleKeyDown = this.handleKeyDown.bind(this);
+    this.quickEditorEscapeHandler = null;
 
     this.init();
   }
@@ -24,13 +24,10 @@ class KeyboardShortcuts {
    */
   init() {
     if (this.initialized) return;
-    console.log('[KeyboardShortcuts] Initializing...');
-
     // Listen for keyboard events
     document.addEventListener('keydown', this.boundHandleKeyDown);
     this.initialized = true;
 
-    console.log('[KeyboardShortcuts] Initialized');
   }
 
   /**
@@ -91,8 +88,6 @@ class KeyboardShortcuts {
    * Handle a specific shortcut
    */
   async handleShortcut(key) {
-    console.log('[KeyboardShortcuts] Shortcut triggered:', key);
-
     switch (key) {
       case 'e':
         await this.handleEnhanceShortcut();
@@ -117,13 +112,9 @@ class KeyboardShortcuts {
       return;
     }
 
-    console.log('[KeyboardShortcuts] Enhancing prompt via Alt+E');
-
-    // Trigger the enhancement
-    await this.inlineUI.handleEnhanceClick();
-
-    // Show feedback
+    // Show feedback before the asynchronous work starts.
     this.showShortcutFeedback('⚡ Enhancing prompt...');
+    await this.inlineUI.handleEnhanceClick();
   }
 
   /**
@@ -141,8 +132,6 @@ class KeyboardShortcuts {
       this.showShortcutFeedback(`No preset configured for ${shortcutKey}`, 'warning');
       return;
     }
-
-    console.log('[KeyboardShortcuts] Switching to preset:', presetKey);
 
     // Update the current enhancement type
     settings.currentEnhancementType = presetKey;
@@ -173,8 +162,6 @@ class KeyboardShortcuts {
    * Open quick custom prompt editor
    */
   async openQuickEditor() {
-    console.log('[KeyboardShortcuts] Opening quick editor');
-
     // Get current settings
     const settings = await this.getSettings();
 
@@ -257,13 +244,12 @@ class KeyboardShortcuts {
     });
 
     // Escape key to close
-    const handleEscape = (e) => {
+    this.quickEditorEscapeHandler = (e) => {
       if (e.key === 'Escape') {
         this.closeQuickEditor();
-        document.removeEventListener('keydown', handleEscape);
       }
     };
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', this.quickEditorEscapeHandler);
 
     // Click outside to close
     modal.addEventListener('click', (e) => {
@@ -304,15 +290,22 @@ class KeyboardShortcuts {
     // Close editor
     this.closeQuickEditor();
 
-    console.log('[KeyboardShortcuts] Custom prompt saved');
   }
 
   /**
    * Close quick editor
    */
   closeQuickEditor() {
+    if (this.quickEditorEscapeHandler) {
+      document.removeEventListener('keydown', this.quickEditorEscapeHandler);
+      this.quickEditorEscapeHandler = null;
+    }
+
     const modal = document.getElementById('ape-quick-editor-modal');
-    if (!modal) return;
+    if (!modal) {
+      this.quickEditorOpen = false;
+      return;
+    }
 
     modal.classList.remove('ape-show');
     setTimeout(() => {
@@ -368,10 +361,12 @@ class KeyboardShortcuts {
    */
   async getSettings() {
     try {
-      const result = await browserCompat.storageGet([STORAGE_KEYS.SETTINGS]);
-      return result[STORAGE_KEYS.SETTINGS] || this.settings || {};
+      return await browserCompat.sendMessage({ action: 'getSettings' }) || this.settings || {};
     } catch (error) {
-      console.error('[KeyboardShortcuts] Failed to get settings:', error);
+      const message = error?.message || String(error);
+      if (!message.includes('Extension context invalidated')) {
+        console.error('[KeyboardShortcuts] Failed to get settings:', error);
+      }
       return this.settings || {};
     }
   }
@@ -381,8 +376,9 @@ class KeyboardShortcuts {
    */
   async saveSettings(settings) {
     try {
-      await browserCompat.storageSet({
-        [STORAGE_KEYS.SETTINGS]: settings
+      await browserCompat.sendMessage({
+        action: 'saveSettings',
+        data: { settings }
       });
 
       // Update local reference
@@ -402,7 +398,6 @@ class KeyboardShortcuts {
    */
   enable() {
     this.enabled = true;
-    console.log('[KeyboardShortcuts] Enabled');
   }
 
   /**
@@ -410,7 +405,6 @@ class KeyboardShortcuts {
    */
   disable() {
     this.enabled = false;
-    console.log('[KeyboardShortcuts] Disabled');
   }
 
   /**

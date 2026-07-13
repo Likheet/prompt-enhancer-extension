@@ -14,10 +14,20 @@ test('enhances a prompt inline and keeps extension pages healthy', async ({ brow
   });
 
   try {
-    let [serviceWorker] = context.serviceWorkers();
+    let serviceWorker = context.serviceWorkers()
+      .find((worker) => worker.url().endsWith('/dist/service-worker.js'));
     if (!serviceWorker) {
-      serviceWorker = await context.waitForEvent('serviceworker');
+      serviceWorker = await context.waitForEvent('serviceworker', {
+        predicate: (worker) => worker.url().endsWith('/dist/service-worker.js')
+      });
     }
+    await expect.poll(async () => {
+      serviceWorker = context.serviceWorkers()
+        .find((worker) => worker.url().endsWith('/dist/service-worker.js')) || serviceWorker;
+      return serviceWorker.evaluate(() => (
+        Boolean(globalThis.chrome?.storage?.local)
+      )).catch(() => false);
+    }).toBe(true);
     const extensionId = new URL(serviceWorker.url()).host;
 
     await serviceWorker.evaluate(async () => {
@@ -44,6 +54,36 @@ test('enhances a prompt inline and keeps extension pages healthy', async ({ brow
     await expect(enhanceButton).toBeVisible({ timeout: 15_000 });
     await expect(enhanceButton).toHaveCount(1);
     await expect(composer.locator(enhanceButton)).toHaveCount(1);
+    // Deterministic provider mock: this smoke test never contacts a real API.
+    serviceWorker = context.serviceWorkers()
+      .find((worker) => worker.url().endsWith('/dist/service-worker.js')) || serviceWorker;
+    await serviceWorker.evaluate(() => {
+      globalThis.fetch = async (_url, init) => {
+        const source = String(init?.body || '');
+        let text = 'Create this with specific examples.';
+        if (source.includes('fix this code')) {
+          text = 'Create a comprehensive, structured debugging request.';
+        } else if (source.includes('improve this')) {
+          text = 'Enhance and optimize this with specific examples.';
+        }
+        return new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ enhanced_prompt: text }) }] }, finishReason: 'STOP' }]
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      };
+    });
+    const settingsPage = await context.newPage();
+    await settingsPage.goto(`chrome-extension://${extensionId}/src/popup/popup.html`);
+    const savedProvider = await settingsPage.evaluate(() => new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'saveProviderKey',
+        data: { provider: 'gemini', apiKey: 'mock-gemini-key' }
+      }, resolve);
+    }));
+    await settingsPage.close();
+    expect(savedProvider.success).toBe(true);
     expect(await page.evaluate(() => {
       const attach = document.querySelector('[aria-label="Attach file"]');
       const enhancer = document.querySelector('[aria-label^="Enhance Prompt"]');
@@ -135,16 +175,24 @@ test('enhances a prompt inline and keeps extension pages healthy', async ({ brow
       const replacement = document.createElement('form');
       replacement.className = 'composer';
       replacement.innerHTML = `
-        <div contenteditable="true" role="textbox" aria-label="Message" data-placeholder="Message the assistant"></div>
+        <div contenteditable="plaintext-only" role="textbox" aria-label="Message" data-placeholder="Message the assistant"></div>
         <button type="submit" aria-label="Send">➜</button>
       `;
       replacement.addEventListener('submit', (event) => event.preventDefault());
       previousComposer.replaceWith(replacement);
     });
 
-    const richPromptInput = page.locator('[contenteditable="true"][aria-label="Message"]');
+    const richPromptInput = page.locator('[contenteditable="plaintext-only"][aria-label="Message"]');
     await expect(enhanceButton).toBeVisible({ timeout: 5_000 });
-    await richPromptInput.fill('improve this');
+    await richPromptInput.evaluate((element) => {
+      element.focus();
+      element.textContent = 'improve this';
+      element.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: 'improve this'
+      }));
+    });
     await enhanceButton.click();
     await expect(richPromptInput).toContainText(/enhance and optimize|specific examples/i);
 
@@ -166,7 +214,7 @@ test('enhances a prompt inline and keeps extension pages healthy', async ({ brow
       if (relativeUrl.includes('options')) {
         await expect(extensionPage.locator('.enhancement-type-card')).toHaveCount(6);
       } else {
-        await expect(extensionPage.locator('#site-placement option')).toHaveCount(4);
+        await expect(extensionPage.locator('#site-placement option')).toHaveCount(5);
       }
       expect(extensionErrors).toEqual([]);
       await extensionPage.close();

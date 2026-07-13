@@ -38,7 +38,6 @@ class FloatingUI {
 
     document.body.appendChild(container);
 
-    console.log('[APE] UI created');
   }
 
   /**

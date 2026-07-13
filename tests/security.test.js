@@ -28,6 +28,14 @@ describe('production source security', () => {
     expect(exposedFiles).toEqual([]);
   });
 
+  test('does not contain embedded Groq API keys', () => {
+    const exposedFiles = sourceFiles
+      .filter((file) => /gsk_[0-9A-Za-z_-]{20,}/.test(file.contents))
+      .map((file) => path.relative(projectRoot, file.path));
+
+    expect(exposedFiles).toEqual([]);
+  });
+
   test('does not include a hardcoded API-key fallback', () => {
     const fallbackFiles = sourceFiles
       .filter((file) => file.contents.includes('HARDCODED_API_KEY'))
@@ -52,5 +60,20 @@ describe('production source security', () => {
 
     expect(optionsSource).not.toContain('this.settings.geminiKey = apiKey');
     expect(optionsSource).not.toContain('this.settings.geminiApiKey = apiKey');
+    expect(optionsSource).not.toContain('this.settings.groqApiKey = apiKey');
+  });
+
+  test('does not expose saved key fragments through settings placeholders', () => {
+    const settingsMarkup = [
+      fs.readFileSync(path.join(projectRoot, 'src', 'popup', 'popup.html'), 'utf8'),
+      fs.readFileSync(path.join(projectRoot, 'src', 'options', 'options.html'), 'utf8')
+    ].join('\n');
+    const settingsScripts = [
+      fs.readFileSync(path.join(projectRoot, 'src', 'popup', 'popup.js'), 'utf8'),
+      fs.readFileSync(path.join(projectRoot, 'src', 'options', 'options.js'), 'utf8')
+    ].join('\n');
+
+    expect(settingsMarkup).not.toMatch(/placeholder=["'][^"']*(AIza|gsk_|saved key)/i);
+    expect(settingsScripts).not.toContain('apiKeyMasked');
   });
 });

@@ -24,6 +24,7 @@ describe('site preferences', () => {
 
   test('keeps popup defaults aligned with supported and heuristic sites', () => {
     expect(resolveSitePreferences({ hostname: 'poe.com' }).enabled).toBe(true);
+    expect(resolveSitePreferences({ hostname: 'commandcode.ai' }).enabled).toBe(true);
     expect(resolveSitePreferences({ hostname: 'example.test', title: 'Helpful AI Chat' }).enabled).toBe(true);
     expect(resolveSitePreferences({ hostname: 'example.test', title: 'News' }).enabled).toBe(false);
   });

@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS = {
   enhancementLevel: ENHANCEMENT_LEVELS.MODERATE,
   currentEnhancementType: ENHANCEMENT_PRESETS.BALANCED,
   customEnhancementPrompt: '',
+  conversationAwareness: true,
   contextWindow: 10,
   autoEnhance: false,
   showDiff: true,
@@ -66,90 +67,34 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const PROMPT_TEMPLATES = {
-  standard: `CONTEXT EVALUATION: Analyze if conversation history is relevant. Use context only if the input contains pronouns without antecedents ("it," "this," "that"), references to previous topics ("also," "continue," "as mentioned"), or builds on prior requests. If the input is self-contained or pivots to a new topic, ignore history and treat as standalone.
+  standard: `Produce a natural, ready-to-send prompt. Improve clarity, specificity, useful context, constraints, and actionability only where they help the user's actual goal. Preserve a concise input when extra structure would add friction.`,
+  structured: `Produce a ready-to-send prompt with these sections when applicable: Role, Objective, Context, Constraints, Deliverables, and Output Format. Omit sections that would contain invented or redundant information. Use plain labels and bullets; do not wrap the result in a code block.`
+};
 
-ENHANCEMENT LEVEL: \${enhancementLevel}
-
-Light: Preserve original phrasing, add only essential missing elements
-Moderate: Balance preservation with improvement, add structure where needed
-Aggressive: Comprehensive transformation for maximum clarity and precision
-
-PRESET FOCUS: \${presetFocus}
-
-Technical: Emphasize specifications, constraints, measurable criteria, technical precision
-Creative: Enhance descriptive language, stylistic guidance, creative parameters, vision clarity
-Business: Add success metrics, stakeholder context, deliverables, professional framing
-Academic: Include methodology, research parameters, analytical depth, citation requirements
-Conversational: Maintain natural tone while adding clarity and helpful context
-General: Balanced enhancement across all dimensions
-
-Transform the input by enhancing these five dimensions:
-
-CLARITY: Eliminate ambiguity, refine wording, structure information logically
-SPECIFICITY: Add concrete details, quantifiable metrics, explicit examples, targeted parameters
-CONTEXT: Incorporate background information, use cases, audience details, domain knowledge
-CONSTRAINTS: Define boundaries, scope, format requirements, style guidelines, success criteria
-ACTIONABILITY: Use active instructions, specify deliverables, include evaluation methods, establish measurable outcomes
-
-\${conversationContext}
-
-INPUT: \${userInput}
-
-Output only the enhanced prompt with no meta-commentary, explanations, formatting markup, or quotation marks.`,
-  structured: `You are a Prompt Enhancement Specialist. Transform the user's input into a structured prompt using this EXACT format.
-
-CRITICAL FORMATTING RULES:
-1. Each section MUST start on a new line
-2. Put a blank line between sections
-3. Use ONLY plain text - no markdown, no code blocks, no quotes
-4. Format: "SectionName: content" 
-5. For bullet lists, put each item on its own line starting with "- "
-
-SECTIONS TO INCLUDE:
-
-Role: [Define AI assistant role for the task domain]
-
-Objective: [State the main goal in 1-2 sentences]
-
-Constraints:
-- [List any limitations or requirements]
-- [Each constraint on its own line]
-
-Deliverables:
-- [Specific output item 1]
-- [Specific output item 2]
-- [Specific output item 3]
-- [Add more as needed]
-
-Output Format: [Specify format like Text, Markdown, JSON, etc.]
-
-EXAMPLE:
-Input: "help me with a greeting"
-
-Your output should be:
-Role: Conversational AI
-
-Objective: Acknowledge the user's greeting and initiate a helpful interaction.
-
-Constraints:
-- Response should be friendly and welcoming
-- Response should be concise and avoid unnecessary details
-
-Deliverables:
-- Acknowledge the greeting
-- Offer assistance or ask how to help
-
-Output Format: Text
-
-Now enhance this prompt (output ONLY the structured format above, nothing else):
-{{PROMPT}}`
+export const AI_PROVIDERS = {
+  AUTO: 'auto',
+  GEMINI: 'gemini',
+  GROQ: 'groq'
 };
 
 export const GEMINI_API = {
   BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-  MODEL: 'gemini-3.5-flash',
-  MAX_RETRIES: 3,
-  TIMEOUT: 10000
+  MODEL: 'gemini-3.1-flash-lite',
+  DISPLAY_NAME: 'Gemini 3.1 Flash-Lite',
+  MAX_ATTEMPTS: 1,
+  // Kept for the legacy PromptEnhancer path. This value is the total number
+  // of attempts, not retries after the first request.
+  MAX_RETRIES: 1,
+  TIMEOUT: 8000,
+  RETRY_BASE_DELAY: 250,
+  MAX_RETRY_DELAY: 750
+};
+
+export const GROQ_API = {
+  BASE_URL: 'https://api.groq.com/openai/v1',
+  MODEL: 'llama-3.1-8b-instant',
+  DISPLAY_NAME: 'Llama 3.1 8B Instant',
+  TIMEOUT: GEMINI_API.TIMEOUT
 };
 
 export const UI_CONSTANTS = {
@@ -218,6 +163,7 @@ export const SUPPORTED_AI_DOMAINS = [
   'openrouter.ai',
   'together.ai',
   'anyscale.com',
+  'commandcode.ai',
 
   // Others
   'zapier.com',             // Zapier Central

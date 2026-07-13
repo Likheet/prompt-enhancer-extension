@@ -3,15 +3,12 @@
  * Provides inline button beside chatbox for prompt enhancement
  */
 
-import { STORAGE_KEYS } from '../shared/constants.js';
 import { copyToClipboard, generateId, renderStaticHTML } from '../shared/utils.js';
 import browserCompat from '../shared/browser-compat.js';
 import DOCKING_STRATEGIES from './docking-strategies.js';
-import EnhancementPresets from './enhancement-presets.js';
 
 class InlineUI {
-  constructor(enhancer, extractor, domObserver, settings) {
-    this.enhancer = enhancer;
+  constructor(extractor, domObserver, settings) {
     this.extractor = extractor;
     this.domObserver = domObserver;
     this.settings = settings;
@@ -20,7 +17,7 @@ class InlineUI {
     this.enhancedPrompt = null;
     this.isProcessing = false;
     this.buttonId = `ape-inline-btn-${generateId()}`;
-    this.presets = new EnhancementPresets();
+    this.lastEnhancementUsedFallback = false;
     this.extensionInvalidatedNotified = false;
     this.currentDockingTarget = null;
     this.pageObserver = null;
@@ -32,6 +29,12 @@ class InlineUI {
     this.missingInputWarned = false;
     this.attachPromise = null;
     this.destroyed = false;
+    this.activeEnhancementRequestId = null;
+    this.lastFallbackReason = null;
+    this.lastProviderUsed = null;
+    this.lastEnhancementTimings = null;
+    this.contextMenuOutsideHandler = null;
+    this.contextMenuListenerTimer = null;
 
     this.init();
   }
@@ -40,15 +43,12 @@ class InlineUI {
    * Initialize the inline UI
    */
   async init() {
-    console.log('[APE InlineUI] Initializing...');
-
     // Monitor for chatbox changes (SPA navigation, etc.)
     this.observeChatbox();
 
     // Try immediately. The observer and bounded retry handle late hydration.
     await this.attachButtonToChatbox();
 
-    console.log('[APE InlineUI] Initialized');
   }
 
   /**
@@ -67,7 +67,9 @@ class InlineUI {
 
       this.reattachTimeout = setTimeout(() => {
         // Re-resolve even while connected: native toolbars often hydrate later.
-        this.attachButtonToChatbox();
+        if (!this.destroyed) {
+          this.attachButtonToChatbox();
+        }
       }, 250);
     });
 
@@ -81,8 +83,16 @@ class InlineUI {
    * Cleanup resources
    */
   destroy() {
-    console.log('[APE InlineUI] Cleaning up...');
     this.destroyed = true;
+
+    if (this.activeEnhancementRequestId) {
+      const requestId = this.activeEnhancementRequestId;
+      this.activeEnhancementRequestId = null;
+      void browserCompat.sendMessage({
+        action: 'cancelEnhancement',
+        data: { requestId }
+      }).catch(() => undefined);
+    }
 
     if (this.pageObserver) {
       this.pageObserver.disconnect();
@@ -90,6 +100,7 @@ class InlineUI {
     }
 
     this.clearDockingObserver();
+    this.closeContextMenu();
     clearTimeout(this.reattachTimeout);
     clearTimeout(this.retryTimeout);
     this.reattachTimeout = null;
@@ -130,7 +141,7 @@ class InlineUI {
   }
 
   async performAttachButtonToChatbox() {
-    console.log('[APE InlineUI] Attempting to attach button...');
+    if (this.destroyed) return;
 
     if (typeof this.domObserver.shouldSkipMount === 'function' && this.domObserver.shouldSkipMount()) {
       return;
@@ -138,11 +149,12 @@ class InlineUI {
 
     const existingButton = document.getElementById(this.buttonId);
     if (!this.currentButton && existingButton) {
-      console.log('[APE InlineUI] Button already exists in DOM, reusing...');
       this.currentButton = existingButton;
     }
 
     const inputArea = await this.domObserver.findInputElement();
+    if (this.destroyed) return;
+
     if (!inputArea) {
       // Exponential Backoff Retry Logic
       const attempt = (this.retryAttempt || 0) + 1;
@@ -164,7 +176,6 @@ class InlineUI {
     this.retryAttempt = 0;
     this.missingInputWarned = false;
 
-    console.log('[APE InlineUI] Input area found:', inputArea.tagName, inputArea.className);
     this.cachedInputElement = inputArea;
 
     if (!this.currentButton) {
@@ -177,11 +188,7 @@ class InlineUI {
     if (!docked) {
       console.warn('[APE InlineUI] Docking failed, using floating fallback');
       this.applyFloatingFallback();
-    } else {
-      console.log('[APE InlineUI] Button docked successfully');
     }
-
-    console.log('[APE InlineUI] Button attached successfully');
   }
 
   /**
@@ -225,11 +232,7 @@ class InlineUI {
    * Show context menu on right-click
    */
   async showContextMenu(event) {
-    // Remove any existing context menu
-    const existingMenu = document.getElementById('ape-context-menu');
-    if (existingMenu) {
-      existingMenu.remove();
-    }
+    this.closeContextMenu();
 
     const settings = await this.getSettings();
     const currentTemplate = settings.promptTemplateType || 'standard';
@@ -291,21 +294,35 @@ class InlineUI {
         // Change template
         await this.changeTemplate(template);
         this.showToast(`Switched to ${template === 'standard' ? 'Direct Enhancer' : 'Structured Blueprint'}`, 'success');
-        menu.remove();
+        this.closeContextMenu();
       } else if (action === 'open-settings') {
-        browserCompat.sendMessage({ action: 'openOptions' });
-        menu.remove();
+        void browserCompat.sendMessage({ action: 'openOptions' });
+        this.closeContextMenu();
       }
     });
 
     // Close menu on outside click
-    const closeMenu = (e) => {
+    this.contextMenuOutsideHandler = (e) => {
       if (!menu.contains(e.target)) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
+        this.closeContextMenu();
       }
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    this.contextMenuListenerTimer = setTimeout(() => {
+      this.contextMenuListenerTimer = null;
+      if (!this.destroyed && menu.isConnected && this.contextMenuOutsideHandler) {
+        document.addEventListener('click', this.contextMenuOutsideHandler);
+      }
+    }, 0);
+  }
+
+  closeContextMenu() {
+    clearTimeout(this.contextMenuListenerTimer);
+    this.contextMenuListenerTimer = null;
+    if (this.contextMenuOutsideHandler) {
+      document.removeEventListener('click', this.contextMenuOutsideHandler);
+      this.contextMenuOutsideHandler = null;
+    }
+    document.getElementById('ape-context-menu')?.remove();
   }
 
   /**
@@ -316,8 +333,9 @@ class InlineUI {
       const settings = await this.getSettings();
       settings.promptTemplateType = templateType;
 
-      await browserCompat.storageSet({
-        enhancerSettings: settings
+      await browserCompat.sendMessage({
+        action: 'saveSettings',
+        data: { settings }
       });
 
       // Update cached settings
@@ -480,6 +498,11 @@ class InlineUI {
     if (!container) return;
 
     const observer = new MutationObserver(() => {
+      if (this.destroyed) {
+        this.clearDockingObserver();
+        return;
+      }
+
       if (!this.currentButton) {
         this.clearDockingObserver();
         return;
@@ -488,6 +511,8 @@ class InlineUI {
       if (!container.isConnected) {
         this.clearDockingObserver();
         this.domObserver.findInputElement().then((input) => {
+          if (this.destroyed) return;
+
           if (input) {
             this.cachedInputElement = input;
           }
@@ -533,36 +558,48 @@ class InlineUI {
    * Handle enhance button click
    */
   async handleEnhanceClick() {
-    if (this.isProcessing) {
-      console.log('[APE InlineUI] Already processing...');
+    if (this.destroyed || this.isProcessing) {
       return;
     }
 
+    const startedAt = this.now();
+    const timings = {};
+    this.lastEnhancementUsedFallback = false;
+    this.lastFallbackReason = null;
+    this.lastProviderUsed = null;
+    this.lastEnhancementTimings = null;
     this.isProcessing = true;
     this.showLoading();
 
     try {
-      // Get current settings
+      const settingsStartedAt = this.now();
       const settings = await this.getSettings();
+      timings.settingsMs = this.now() - settingsStartedAt;
+      if (this.destroyed) return;
 
-      // Extract context
+      this.extractor.setConversationAwareness(settings.conversationAwareness);
+      this.extractor.setContextWindow(settings.contextWindow);
+
+      const contextStartedAt = this.now();
       const context = await this.extractor.extractFullContext();
+      timings.conversationAndMetadataMs = this.now() - contextStartedAt;
+      Object.assign(timings, context.collectionTimings || {});
+      if (this.destroyed) return;
 
       if (!context.currentPrompt || context.currentPrompt.trim().length === 0) {
         this.showToast('No prompt to enhance', 'error');
         return;
       }
 
-      console.log('[APE InlineUI] Enhancing prompt...', {
-        originalLength: context.currentPrompt.length,
-        contextMessages: context.conversationHistory.length
-      });
-
-      // Get enhancement type from settings
       const enhancementType = settings.currentEnhancementType || 'balanced';
+      const originalPrompt = String(context.currentPrompt);
+      const requestRoute = this.getRouteIdentity();
+      const requestInputElement = this.domObserver.inputElement || this.cachedInputElement;
 
-      // Enhance prompt
+      const requestStartedAt = this.now();
       const enhanced = await this.enhancePrompt(context, enhancementType, settings);
+      timings.workerRoundTripMs = this.now() - requestStartedAt;
+      if (this.destroyed) return;
 
       if (!enhanced) {
         this.showToast('Enhancement failed', 'error');
@@ -575,33 +612,74 @@ class InlineUI {
         return;
       }
       if (trimmedEnhanced === trimmedOriginal) {
-        this.showToast('No changes were applied to the prompt', 'info');
+        this.showToast(
+          this.lastEnhancementUsedFallback
+            ? this.getFallbackToast(this.lastFallbackReason, this.lastProviderUsed)
+            : 'No changes were applied to the prompt',
+          this.lastEnhancementUsedFallback ? 'warning' : 'info'
+        );
+        return;
+      }
+
+      const livePrompt = String(await this.domObserver.extractPromptText());
+      const liveInputElement = this.domObserver.inputElement || this.cachedInputElement;
+      const routeChanged = requestRoute && this.getRouteIdentity() !== requestRoute;
+      const inputChanged = requestInputElement && liveInputElement !== requestInputElement;
+      if (livePrompt !== originalPrompt || routeChanged || inputChanged) {
+        this.showToast('Prompt changed while enhancement was running', 'info');
         return;
       }
 
       this.enhancedPrompt = enhanced;
 
-      console.log('[APE InlineUI] Enhancement complete', {
-        enhancedLength: enhanced.length,
-        difference: enhanced.length - context.currentPrompt.length
-      });
-
-      // Replace text in chatbox
+      const injectionStartedAt = this.now();
       const success = await this.domObserver.injectEnhancedPrompt(enhanced);
+      timings.injectionMs = this.now() - injectionStartedAt;
+      if (this.destroyed) return;
 
       if (success) {
-        this.showToast('Prompt enhanced!', 'success');
+        this.showToast(
+          this.lastEnhancementUsedFallback
+            ? this.getFallbackToast(this.lastFallbackReason, this.lastProviderUsed)
+            : 'Prompt enhanced!',
+          this.lastEnhancementUsedFallback ? 'warning' : 'success'
+        );
 
-        // Track enhancement
-        await this.trackEnhancement(enhancementType);
+        // Telemetry must not extend the user-visible loading state.
+        void this.trackEnhancement(enhancementType);
       } else {
         this.showToast('Failed to apply enhancement', 'error');
       }
 
     } catch (error) {
-      console.error('[APE InlineUI] Enhancement error:', error);
-      this.showToast('Enhancement failed', 'error');
+      if (error?.code === 'cancelled' || this.destroyed) return;
+      if (error?.code === 'timeout') {
+        this.showToast('Enhancement timed out. Please try again.', 'warning');
+      } else if (error?.code === 'provider_key_required') {
+        this.showToast('Add a Gemini or Groq API key to enhance prompts.', 'error', {
+          label: 'Open settings',
+          onClick: () => browserCompat.sendMessage({ action: 'openOptions' })
+        });
+      } else if (error?.code === 'auth') {
+        this.showToast('Check the selected provider API key in Settings', 'error');
+      } else if (error?.code === 'rate_limit') {
+        this.showToast('The selected provider is rate limited. Please try again shortly.', 'warning');
+      } else if (error?.code === 'server_error') {
+        this.showToast('The selected provider is temporarily unavailable. Please try again.', 'warning');
+      } else if (error?.code === 'network') {
+        this.showToast('Could not reach the selected provider. Check your connection and try again.', 'warning');
+      } else if (['model_configuration', 'invalid_request', 'response_parse', 'response_empty', 'output_invalid'].includes(error?.code)) {
+        this.showToast('The provider returned an invalid enhancement. Your prompt was not changed.', 'error');
+      } else {
+        console.error('[APE InlineUI] Enhancement error:', error);
+        this.showToast('Enhancement failed', 'error');
+      }
     } finally {
+      timings.totalMs = this.now() - startedAt;
+      this.lastEnhancementTimings = {
+        ...this.lastEnhancementTimings,
+        ...timings
+      };
       this.isProcessing = false;
       this.hideLoading();
     }
@@ -611,24 +689,64 @@ class InlineUI {
    * Enhance prompt using current settings
    */
   async enhancePrompt(context, enhancementType, settings) {
-    // Use the preset system
     const customPrompt = enhancementType === 'custom' ? settings.customEnhancementPrompt : null;
+    const requestId = `enhance-${generateId()}`;
+    this.activeEnhancementRequestId = requestId;
+    let response;
 
     try {
-      const enhanced = await this.presets.enhanceWithPreset(
-        context,
-        enhancementType || 'balanced',
-        customPrompt
-      );
-
-      return enhanced;
-    } catch (error) {
-      console.error('[InlineUI] Enhancement error:', error);
-
-      // Fallback to basic enhancement
-      const fallback = await this.enhancer.enhancePrompt(context, settings);
-      return fallback.enhanced;
+      response = await browserCompat.sendMessage({
+        action: 'enhancePrompt',
+        data: {
+          requestId,
+          context,
+          enhancementType: enhancementType || 'balanced',
+          customPrompt
+        }
+      });
+    } finally {
+      if (this.activeEnhancementRequestId === requestId) {
+        this.activeEnhancementRequestId = null;
+      }
     }
+
+    if (!response?.success || typeof response.enhanced !== 'string') {
+      const error = new Error(response?.error || 'Enhancement request failed');
+      error.code = response?.errorCode || response?.code || 'request_failed';
+      throw error;
+    }
+
+    this.lastEnhancementUsedFallback = Boolean(response.usedFallback);
+    this.lastFallbackReason = response.fallbackReason || null;
+    this.lastProviderUsed = response.providerUsed || null;
+    this.lastEnhancementTimings = response.timings || null;
+    return response.enhanced;
+  }
+
+  now() {
+    return globalThis.performance?.now?.() ?? Date.now();
+  }
+
+  getRouteIdentity() {
+    return String(globalThis.location?.href || '');
+  }
+
+  getFallbackToast(reason, provider = 'gemini') {
+    const label = provider === 'groq' ? 'Groq' : 'Gemini';
+    const messages = {
+      auth: `${label} API key was rejected; used local enhancement`,
+      rate_limit: `${label} rate limit reached; used local enhancement`,
+      server_error: `${label} is unavailable; used local enhancement`,
+      network: `${label} could not be reached; used local enhancement`,
+      timeout: `${label} timed out; used local enhancement`,
+      content_blocked: `${label} declined the request; used local enhancement`,
+      response_parse: `${label} returned an invalid response; used local enhancement`,
+      response_empty: `${label} returned no text; used local enhancement`,
+      output_invalid: `${label} returned unusable text; used local enhancement`,
+      model_configuration: `${label} model configuration failed; used local enhancement`,
+      invalid_request: `${label} rejected the request; used local enhancement`
+    };
+    return messages[reason] || `${label} enhancement failed; used local enhancement`;
   }
 
   /**
@@ -656,18 +774,6 @@ class InlineUI {
         }
       } else {
         console.error('[APE InlineUI] Failed to get settings:', error);
-      }
-
-      try {
-        const fallback = await browserCompat.storageGet([STORAGE_KEYS.SETTINGS]);
-        if (fallback?.[STORAGE_KEYS.SETTINGS]) {
-          this.settings = {
-            ...this.settings,
-            ...fallback[STORAGE_KEYS.SETTINGS]
-          };
-        }
-      } catch (storageError) {
-        console.error('[APE InlineUI] Storage fallback failed:', storageError);
       }
 
       return this.settings || {};
@@ -701,8 +807,13 @@ class InlineUI {
   showLoading() {
     if (!this.currentButton) return;
 
-    // Keep the icon visible and just add the processing class to make it spin
+    const enhanceIcon = this.currentButton.querySelector('.ape-icon-enhance');
+    const spinner = this.currentButton.querySelector('.ape-spinner-inline');
+
     this.currentButton.disabled = true;
+    this.currentButton.setAttribute('aria-busy', 'true');
+    enhanceIcon?.classList.add('ape-hidden');
+    spinner?.classList.remove('ape-hidden');
     this.currentButton.classList.add('ape-processing');
   }
 
@@ -712,15 +823,20 @@ class InlineUI {
   hideLoading() {
     if (!this.currentButton) return;
 
-    // Remove the processing class to stop the spinning animation
+    const enhanceIcon = this.currentButton.querySelector('.ape-icon-enhance');
+    const spinner = this.currentButton.querySelector('.ape-spinner-inline');
+
     this.currentButton.disabled = false;
+    this.currentButton.removeAttribute('aria-busy');
+    enhanceIcon?.classList.remove('ape-hidden');
+    spinner?.classList.add('ape-hidden');
     this.currentButton.classList.remove('ape-processing');
   }
 
   /**
    * Show toast notification
    */
-  showToast(message, type = 'info') {
+  showToast(message, type = 'info', action = null) {
     // Remove any existing toast
     const existingToast = document.querySelector('.ape-toast');
     if (existingToast) {
@@ -741,7 +857,14 @@ class InlineUI {
     renderStaticHTML(toast, `
       <span class="ape-toast-icon">${icons[type] || icons.info}</span>
       <span class="ape-toast-message">${message}</span>
+      ${action?.label ? '<button type="button" class="ape-toast-action"></button>' : ''}
     `);
+
+    const actionButton = toast.querySelector('.ape-toast-action');
+    if (actionButton) {
+      actionButton.textContent = action.label;
+      actionButton.addEventListener('click', () => action.onClick?.());
+    }
 
     document.body.appendChild(toast);
 

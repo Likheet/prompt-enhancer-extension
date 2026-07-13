@@ -31,38 +31,28 @@ class ResilientDOMObserver {
    */
   detectPlatform() {
     const hostname = window.location.hostname.toLowerCase();
-    console.log('[APE] Detecting platform for hostname:', hostname);
-
     if (matchesHostname(hostname, 'chatgpt.com') || matchesHostname(hostname, 'chat.openai.com')) {
-      console.log('[APE] Platform detected: ChatGPT');
       return PLATFORMS.CHATGPT;
     }
     if (matchesHostname(hostname, 'claude.ai')) {
-      console.log('[APE] Platform detected: Claude');
       return PLATFORMS.CLAUDE;
     }
     if (matchesHostname(hostname, 'gemini.google.com')) {
-      console.log('[APE] Platform detected: Gemini');
       return PLATFORMS.GEMINI;
     }
     if (matchesHostname(hostname, 'perplexity.ai')) {
-      console.log('[APE] Platform detected: Perplexity');
       return PLATFORMS.PERPLEXITY;
     }
     if (matchesHostname(hostname, 'aistudio.google.com')) {
-      console.log('[APE] Platform detected: AI Studio');
       return PLATFORMS.AI_STUDIO;
     }
     if (matchesHostname(hostname, 'kimi.com') || matchesHostname(hostname, 'kimi.ai')) {
-      console.log('[APE] Platform detected: Kimi');
       return PLATFORMS.KIMI;
     }
     if (matchesHostname(hostname, 'deepseek.com')) {
-      console.log('[APE] Platform detected: DeepSeek');
       return PLATFORMS.DEEPSEEK;
     }
 
-    console.log('[APE] Platform detected: Generic');
     return PLATFORMS.GENERIC;
   }
 
@@ -270,6 +260,10 @@ class ResilientDOMObserver {
           'textarea',
           '[contenteditable="true"][role="textbox"]',
           '[contenteditable="true"]',
+          '[contenteditable="plaintext-only"]',
+          '[contenteditable]:not([contenteditable="false"])',
+          '[data-lexical-editor="true"]',
+          '[data-slate-editor="true"]',
           '[role="textbox"]',
           '[role="combobox"]',
           'input[type="text"]:not([name*="search"]):not([id*="search"])' // Exclude obvious search bars
@@ -294,9 +288,10 @@ class ResilientDOMObserver {
           'div[class*="outgoing"]'
         ],
         assistantMessage: [
+          '[data-message-author-role="assistant"]',
+          '[data-role="assistant"]',
           'div[class*="assistant"]',
           'div[class*="bot"]',
-          'div[class*="ai"]',
           'div[class*="model"]',
           'div[class*="incoming"]'
         ],
@@ -428,13 +423,11 @@ class ResilientDOMObserver {
     // Strategy 2: Deep Search (Nuclear) - Only for Generic platform
     // This allows us to peer into Shadow DOMs (e.g. Kimi.ai might use Shadow DOM)
     if (this.platform === PLATFORMS.GENERIC) {
-      console.log('[APE] Standard search failed on Generic platform, attempting Deep Search...');
 
       for (const selector of selectorArray) {
         if (!selector) continue;
         const deepMatch = this.deepQuerySelector(selector);
         if (deepMatch) {
-          console.log('[APE] Deep Search found input:', deepMatch);
           return deepMatch;
         }
       }
@@ -447,7 +440,7 @@ class ResilientDOMObserver {
     let score = (selectorCount - selectorIndex) * 12;
     const tagName = element.tagName?.toLowerCase();
     const role = element.getAttribute?.('role') || '';
-    const contentEditable = element.getAttribute?.('contenteditable') === 'true';
+    const contentEditable = Boolean(element.isContentEditable);
     const text = [
       element.id,
       element.className,
@@ -544,7 +537,7 @@ class ResilientDOMObserver {
     // Handle different input types
     if (inputElement.tagName === 'TEXTAREA' || inputElement.tagName === 'INPUT') {
       return inputElement.value;
-    } else if (inputElement.contentEditable === 'true') {
+    } else if (inputElement.isContentEditable) {
       // For contenteditable, get plain text
       return inputElement.innerText || inputElement.textContent || '';
     }
@@ -581,7 +574,7 @@ class ResilientDOMObserver {
         // Trigger input events
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-      } else if (inputElement.contentEditable === 'true') {
+      } else if (inputElement.isContentEditable) {
         const focusTarget = inputElement;
 
         // Focus the editor without scrolling the page if possible
@@ -720,63 +713,123 @@ class ResilientDOMObserver {
   /**
    * Extract all conversation messages
    */
-  extractMessages() {
+  extractMessages(limit = Number.POSITIVE_INFINITY) {
     const messages = [];
+    const maximumMessages = Number.isFinite(Number(limit))
+      ? Math.max(1, Math.floor(Number(limit)))
+      : Number.POSITIVE_INFINITY;
+    const rejectionCounts = {
+      outsideConversation: 0,
+      ui: 0,
+      hidden: 0,
+      streaming: 0,
+      composer: 0,
+      roleUnknown: 0,
+      contentInvalid: 0,
+      duplicateTurn: 0
+    };
 
     // First, try to scope to conversation area to avoid sidebar/UI elements
     const conversationContainer = this.findElement(this.selectors.conversationArea);
     let searchRoot = conversationContainer || document.body;
 
     const selectorString = this.selectors.messageContainer.join(',');
-    console.log('[APE DOM Debug]', {
-      platform: this.platform,
-      selectorString,
-      conversationFound: !!conversationContainer,
-      searchRootTag: searchRoot?.tagName
-    });
-
     let messageElements = searchRoot.querySelectorAll(selectorString);
-    console.log('[APE DOM Debug] Messages found:', messageElements.length);
 
     // Fallback: if no messages found in scoped area, try document.body
     if (messageElements.length === 0 && searchRoot !== document.body) {
       searchRoot = document.body;
       messageElements = document.body.querySelectorAll(selectorString);
-      console.log('[APE DOM Debug] Fallback messages found:', messageElements.length);
     }
 
-    messageElements.forEach((element, idx) => {
+    // Start with the newest nodes so long or virtualized chats do not require
+    // parsing every historical turn. Reverse once to restore chronology.
+    for (let index = messageElements.length - 1;
+      index >= 0 && messages.length < maximumMessages;
+      index -= 1) {
+      const element = messageElements[index];
       // Skip if element is not in conversation area (e.g., sidebar)
       if (!this.isInConversationArea(element)) {
-        console.log(`[APE DOM Debug] Message ${idx} REJECTED: not in conversation area`, element.tagName);
-        return;
+        rejectionCounts.outsideConversation += 1;
+        continue;
       }
 
       // Skip elements that are clearly UI/navigation (sidebars, headers, etc.)
       if (this.isUIElement(element)) {
-        console.log(`[APE DOM Debug] Message ${idx} REJECTED: isUIElement`, element.tagName);
-        return;
+        rejectionCounts.ui += 1;
+        continue;
+      }
+      if (!this.isMessageVisible(element)) {
+        rejectionCounts.hidden += 1;
+        continue;
+      }
+      if (this.isStreamingMessage(element)) {
+        rejectionCounts.streaming += 1;
+        continue;
+      }
+      if (this.isComposerElement(element)) {
+        rejectionCounts.composer += 1;
+        continue;
       }
 
-      const isUser = this.isUserMessage(element);
-      const content = this.cleanMessageContent(element.textContent || '');
+      const role = this.getMessageRole(element);
+      if (!role) {
+        rejectionCounts.roleUnknown += 1;
+        continue;
+      }
+
+      const visibleText = this.extractVisibleMessageText(element);
+      const content = this.cleanMessageContent(visibleText);
 
       // Validate message quality
-      if (content && this.isValidMessage(content)) {
-        console.log(`[APE DOM Debug] Message ${idx} ACCEPTED:`, { tag: element.tagName, role: isUser ? 'user' : 'assistant', len: content.length });
-        messages.push({
-          role: isUser ? 'user' : 'assistant',
-          content: content,
-          element: element,
-          timestamp: this.extractTimestamp(element)
-        });
-      } else {
-        console.log(`[APE DOM Debug] Message ${idx} REJECTED: invalid content`, { tag: element.tagName, contentLen: content?.length });
+      if (!content || !this.isValidMessage(content)) {
+        rejectionCounts.contentInvalid += 1;
+        continue;
       }
-    });
 
-    console.log('[APE DOM Debug] Final messages array length:', messages.length);
-    return messages;
+      // A single host turn may match several nested selectors. Traverse from
+      // newest to oldest and retain the first, narrowest matching node so the
+      // limit applies to turns rather than wrapper elements.
+      if (messages.some((message) => (
+        message.role === role && this.elementsOverlap(message.element, element)
+      ))) {
+        rejectionCounts.duplicateTurn += 1;
+        continue;
+      }
+
+      messages.push({
+        role,
+        content,
+        element,
+        timestamp: this.extractTimestamp(element)
+      });
+    }
+
+    const chronologicalMessages = messages.reverse();
+    this.lastMessageExtractionDiagnostics = {
+      platform: this.platform,
+      candidateCount: messageElements.length,
+      canonicalTurnCount: messages.length,
+      returnedMessageCount: chronologicalMessages.length,
+      rejectionCounts
+    };
+    return chronologicalMessages;
+  }
+
+  elementsOverlap(first, second) {
+    return first === second ||
+      first?.contains?.(second) ||
+      second?.contains?.(first);
+  }
+
+  getMessageExtractionDiagnostics() {
+    const diagnostics = this.lastMessageExtractionDiagnostics;
+    if (!diagnostics) return null;
+
+    return {
+      ...diagnostics,
+      rejectionCounts: { ...diagnostics.rejectionCounts }
+    };
   }
 
   /**
@@ -786,7 +839,7 @@ class ResilientDOMObserver {
     // Check if element is in sidebar or navigation
     let current = element;
     while (current && current !== document.body) {
-      const classList = current.className || '';
+      const classList = this.getElementClassName(current);
       const role = current.getAttribute('role') || '';
 
       // Common sidebar/navigation indicators
@@ -816,8 +869,7 @@ class ResilientDOMObserver {
    * Check if element is a UI component (not actual message)
    */
   isUIElement(element) {
-    const classList = element.className || '';
-    const text = (element.textContent || '').trim();
+    const classList = this.getElementClassName(element);
 
     // Skip elements that are buttons, links, or headers
     if (
@@ -827,11 +879,6 @@ class ResilientDOMObserver {
       element.tagName === 'FOOTER' ||
       element.tagName === 'NAV'
     ) {
-      return true;
-    }
-
-    // Skip elements with very short text (likely UI labels)
-    if (text.length < 10) {
       return true;
     }
 
@@ -853,22 +900,147 @@ class ResilientDOMObserver {
     );
   }
 
+  getElementClassName(element) {
+    return typeof element?.className === 'string' ? element.className : '';
+  }
+
+  isMessageVisible(element) {
+    if (!element || element.isConnected === false || element.hidden) return false;
+    if (element.hasAttribute?.('hidden')) return false;
+    if (element.getAttribute?.('aria-hidden')?.toLowerCase() === 'true') return false;
+
+    try {
+      const style = window.getComputedStyle?.(element);
+      if (style && (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        parseFloat(style.opacity) === 0
+      )) return false;
+    } catch (_error) {
+      // Host elements can disappear during extraction; structural checks above
+      // still provide a safe fallback.
+    }
+
+    return true;
+  }
+
+  isStreamingMessage(element) {
+    const isActiveMarker = (candidate) => {
+      if (!candidate) return false;
+
+      if (candidate.hasAttribute?.('data-is-streaming')) {
+        const value = String(candidate.getAttribute?.('data-is-streaming') ?? '').toLowerCase();
+        if (!['false', '0', 'complete', 'done'].includes(value)) return true;
+      }
+      if (candidate.hasAttribute?.('aria-busy')) {
+        const value = String(candidate.getAttribute?.('aria-busy') ?? '').toLowerCase();
+        if (value !== 'false') return true;
+      }
+
+      const state = String(
+        candidate.getAttribute?.('data-state') || candidate.getAttribute?.('data-status') || ''
+      ).toLowerCase();
+      if (state === 'streaming' || state === 'generating') return true;
+
+      const classes = this.getElementClassName(candidate).toLowerCase().split(/\s+/);
+      return classes.some(name => ['streaming', 'is-streaming', 'result-streaming'].includes(name));
+    };
+
+    let current = element;
+    while (current) {
+      if (isActiveMarker(current)) return true;
+      if (current === document.body) break;
+      current = current.parentElement;
+    }
+
+    try {
+      const descendants = element.querySelectorAll?.(
+        '[data-is-streaming], [aria-busy], [data-state], [data-status], .streaming, .is-streaming, .result-streaming'
+      ) || [];
+      return [...descendants].some(isActiveMarker);
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  isComposerElement(element) {
+    const isEditable = (candidate) => {
+      if (!candidate) return false;
+      const tagName = candidate.tagName?.toLowerCase();
+      const role = candidate.getAttribute?.('role')?.toLowerCase();
+      const contentEditable = candidate.getAttribute?.('contenteditable');
+      return candidate.isContentEditable ||
+        contentEditable === 'true' ||
+        contentEditable === 'plaintext-only' ||
+        tagName === 'textarea' ||
+        tagName === 'input' ||
+        role === 'textbox' ||
+        role === 'combobox';
+    };
+
+    if (isEditable(element)) return true;
+
+    const activeElement = document.activeElement;
+    return isEditable(activeElement) && (
+      element === activeElement || element.contains?.(activeElement)
+    );
+  }
+
+  extractVisibleMessageText(element) {
+    if (!element) return '';
+
+    // Browser innerText already excludes CSS-hidden descendants. Remove text
+    // contributed by controls and accessibility-hidden UI inside a message so
+    // it is never mistaken for conversation content.
+    let text = typeof element.innerText === 'string'
+      ? element.innerText
+      : element.textContent || '';
+    if (typeof element.querySelectorAll !== 'function') return text;
+
+    const excludedSelector = [
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'nav',
+      'aside',
+      'header',
+      'footer',
+      '[role="button"]',
+      '[role="menu"]',
+      '[role="toolbar"]',
+      '[aria-hidden="true"]',
+      '[hidden]',
+      '[contenteditable="true"]',
+      '[contenteditable="plaintext-only"]'
+    ].join(',');
+
+    try {
+      const excludedElements = element.querySelectorAll(excludedSelector);
+      excludedElements.forEach((excluded) => {
+        const excludedText = typeof excluded.innerText === 'string'
+          ? excluded.innerText.trim()
+          : String(excluded.textContent || '').trim();
+        if (excludedText) {
+          const index = text.lastIndexOf(excludedText);
+          if (index >= 0) {
+            text = `${text.slice(0, index)} ${text.slice(index + excludedText.length)}`;
+          }
+        }
+      });
+    } catch (_error) {
+      // The host may detach a message mid-read; retain the already-bounded
+      // visible text rather than failing the entire enhancement.
+    }
+
+    return text;
+  }
+
   /**
    * Validate if content is a real message
    */
   isValidMessage(content) {
-    // Must have minimum length
-    if (content.length < 3) { // Lowered from 10 to 3 for short queries
-      if (this.debug) console.log('[APE DOM Debug] Failed length check:', content.length);
-      return false;
-    }
-
-    // Must have some actual words (not just symbols/numbers)
-    const wordCount = content.split(/\s+/).filter(word => /[a-zA-Z]{2,}/.test(word)).length;
-    if (wordCount < 1) { // Lowered from 2 to 1 (e.g. "Why?")
-      if (this.debug) console.log('[APE DOM Debug] Failed word count check:', wordCount);
-      return false;
-    }
+    if (!String(content || '').trim()) return false;
 
     // Exclude common UI text patterns
     const excludePatterns = [
@@ -879,32 +1051,78 @@ class ResilientDOMObserver {
       /^[\d\s]+$/       // Pure numbers
     ];
 
-    const isExcluded = excludePatterns.some(pattern => pattern.test(content));
-    if (isExcluded && this.debug) console.log('[APE DOM Debug] Failed exclude pattern');
-    return !isExcluded;
+    return !excludePatterns.some(pattern => pattern.test(content));
   }
 
   /**
-   * Determine if message is from user
+   * Resolve an explicit message role. Unknown message-shaped nodes are ignored
+   * instead of being treated as assistant content.
    */
-  isUserMessage(element) {
-    // Try platform-specific selectors
-    for (const selector of this.selectors.userMessage) {
-      if (element.matches(selector)) return true;
+  getMessageRole(element) {
+    const matchesAny = (selectors = []) => selectors.some((selector) => {
+      try {
+        return element.matches(selector);
+      } catch (_error) {
+        return false;
+      }
+    });
+
+    if (matchesAny(this.selectors.userMessage)) return 'user';
+    if (matchesAny(this.selectors.assistantMessage)) return 'assistant';
+
+    // Some hosts expose one turn wrapper to the message container selector
+    // while placing the role attribute on a nested element. Accept that only
+    // when all discovered role evidence agrees; never guess an unknown role.
+    const nestedRoles = new Set();
+    const hasNestedMatch = (selectors = []) => selectors.some((selector) => {
+      try {
+        return Boolean(element.querySelector?.(selector)) ||
+          (element.querySelectorAll?.(selector)?.length || 0) > 0;
+      } catch (_error) {
+        return false;
+      }
+    });
+    if (hasNestedMatch(this.selectors.userMessage)) nestedRoles.add('user');
+    if (hasNestedMatch(this.selectors.assistantMessage)) nestedRoles.add('assistant');
+    try {
+      const nestedRoleMarkers = element.querySelectorAll?.(
+        '[data-message-author-role], [data-role], [data-author]'
+      ) || [];
+      for (const marker of nestedRoleMarkers) {
+        const value = String(
+          marker.getAttribute?.('data-message-author-role') ||
+          marker.getAttribute?.('data-role') ||
+          marker.getAttribute?.('data-author') || ''
+        ).toLowerCase();
+        if (['user', 'human', 'outgoing', 'self'].includes(value)) nestedRoles.add('user');
+        if (['assistant', 'bot', 'model', 'incoming'].includes(value)) nestedRoles.add('assistant');
+      }
+    } catch (_error) {
+      // A host can detach a turn while it is being inspected. The direct role
+      // checks above remain valid and unknown wrappers stay excluded.
+    }
+    if (nestedRoles.size === 1) return [...nestedRoles][0];
+    if (nestedRoles.size > 1) return null;
+
+    const roleHints = [
+      element.getAttribute?.('data-message-author-role'),
+      element.getAttribute?.('data-role'),
+      element.getAttribute?.('data-author'),
+      this.getElementClassName(element)
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (/(^|[\s_-])(user|human|outgoing|self)(?=$|[\s_-])/.test(roleHints)) {
+      return 'user';
+    }
+    if (/(^|[\s_-])(assistant|bot|model|incoming)(?=$|[\s_-])/.test(roleHints)) {
+      return 'assistant';
     }
 
-    // Fallback heuristics
-    const classList = element.className || '';
-    const dataAttrs = Array.from(element.attributes || [])
-      .map(attr => attr.name + attr.value)
-      .join(' ');
+    return null;
+  }
 
-    return (
-      classList.includes('user') ||
-      classList.includes('human') ||
-      dataAttrs.includes('user') ||
-      dataAttrs.includes('human')
-    );
+  isUserMessage(element) {
+    return this.getMessageRole(element) === 'user';
   }
 
   /**

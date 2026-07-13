@@ -38,6 +38,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 test-results/
+test-results-*/
+e2e-*/
 playwright-report/
 
 # Temporary files
