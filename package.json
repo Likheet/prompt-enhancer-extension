@@ -1,6 +1,6 @@
 {
   "name": "ai-prompt-enhancer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Context-aware prompt enhancement for AI chat interfaces",
   "scripts": {
     "build": "node build.js",
