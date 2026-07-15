@@ -1,0 +1,501 @@
+/**
+ * Prompt Enhancement System
+ * Rule-based and AI-powered prompt enhancement
+ */
+
+import { ENHANCEMENT_LEVELS, GEMINI_API, ERROR_MESSAGES, PROMPT_TEMPLATES } from '../shared/constants.js';
+import { truncate, retryWithBackoff } from '../shared/utils.js';
+
+class PromptEnhancer {
+  constructor(subscriptionManager) {
+    this.subscriptionManager = subscriptionManager;
+    this.enhancementStrategies = {
+      clarification: (prompt) => this.clarifyPrompt(prompt),
+      contextual: (prompt, context) => this.addContext(prompt, context),
+      structured: (prompt) => this.structurePrompt(prompt),
+      technical: (prompt) => this.enhanceTechnical(prompt),
+      creative: (prompt) => this.enhanceCreative(prompt),
+      general: (prompt, _context, settings) => this.enhanceGeneral(prompt, settings)
+    };
+  }
+
+  /**
+   * Main enhancement entry point
+   */
+  async enhancePrompt(context, settings = {}) {
+    const subscription = this.subscriptionManager
+      ? await this.subscriptionManager.getActiveSubscription()
+      : null;
+
+    const apiKey = settings.geminiKey || subscription?.apiKey;
+
+    if (!apiKey) {
+      return this.ruleBasedEnhancement(context, settings);
+    }
+
+    return await this.enhanceWithGemini(context, apiKey, settings);
+  }
+
+  /**
+   * Rule-based enhancement (free tier)
+   */
+  ruleBasedEnhancement(context, settings = {}) {
+    const { currentPrompt, metadata = {} } = context;
+
+    if (!currentPrompt || currentPrompt.trim().length === 0) {
+      throw new Error(ERROR_MESSAGES.NO_PROMPT);
+    }
+
+    // Select appropriate strategy based on metadata
+    const strategy = this.selectStrategy(metadata, context);
+
+    // Apply enhancement strategy
+    let enhanced = this.enhancementStrategies[strategy](
+      currentPrompt,
+      context,
+      settings
+    );
+
+    // Apply enhancement level adjustments
+    const level = settings.enhancementLevel || ENHANCEMENT_LEVELS.MODERATE;
+    enhanced = this.applyEnhancementLevel(enhanced, currentPrompt, level);
+
+    return {
+      original: currentPrompt,
+      enhanced: enhanced,
+      strategy: strategy,
+      method: 'rule-based',
+      changes: this.identifyChanges(currentPrompt, enhanced)
+    };
+  }
+
+  /**
+   * AI-powered enhancement with Gemini (BYOK tier)
+   */
+  async enhanceWithGemini(context, apiKey, settings = {}) {
+    const { currentPrompt } = context;
+
+    if (!currentPrompt || currentPrompt.trim().length === 0) {
+      throw new Error(ERROR_MESSAGES.NO_PROMPT);
+    }
+
+    const enhancementPrompt = this.buildGeminiPrompt(context, settings);
+
+    try {
+      const enhanced = await retryWithBackoff(async () => {
+        return await this.callGeminiAPI(enhancementPrompt, apiKey);
+      }, GEMINI_API.MAX_RETRIES);
+
+      return {
+        original: currentPrompt,
+        enhanced: enhanced,
+        strategy: 'ai-powered',
+        method: 'gemini',
+        changes: this.identifyChanges(currentPrompt, enhanced)
+      };
+    } catch (error) {
+      console.error('[APE] Gemini API error:', error);
+      throw new Error(ERROR_MESSAGES.API_ERROR);
+    }
+  }
+
+  /**
+   * Call Gemini API
+   */
+  async callGeminiAPI(prompt, apiKey) {
+    const url = `${GEMINI_API.BASE_URL}/models/${GEMINI_API.MODEL}:generateContent`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_API.TIMEOUT);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024
+          }
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(ERROR_MESSAGES.RATE_LIMIT);
+        }
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.candidates || data.candidates.length === 0) {
+        throw new Error('No response from API');
+      }
+
+      return data.candidates[0].content.parts[0].text.trim();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+
+
+  /**
+   * Format conversation history for context
+   */
+  formatConversationHistory(history) {
+    if (!history || history.length === 0) return '';
+
+    return history.map(msg => {
+      const role = msg.role === 'user' ? 'User' : 'Assistant';
+      // Truncate very long messages to save tokens
+      const content = msg.content.length > 500 ? msg.content.substring(0, 500) + '...' : msg.content;
+      return `${role}: ${content}`;
+    }).join('\n\n');
+  }
+
+  /**
+   * Build prompt for Gemini API
+   */
+  buildGeminiPrompt(context, settings = {}) {
+    const { currentPrompt, conversationHistory = [] } = context;
+    const templateType = settings.promptTemplateType || 'standard';
+
+    let template;
+    if (templateType === 'custom' && settings.customPromptTemplate?.trim()) {
+      template = settings.customPromptTemplate.trim();
+    } else {
+      template = PROMPT_TEMPLATES[templateType] || PROMPT_TEMPLATES.standard;
+    }
+
+    if (!template.includes('{{PROMPT}}')) {
+      template = `${template}\n\n{{PROMPT}}`;
+    }
+
+    // Format and inject conversation history
+    const historyText = this.formatConversationHistory(conversationHistory);
+    let finalPrompt = template.replace(/{{PROMPT}}/g, currentPrompt);
+
+    if (historyText) {
+      finalPrompt = finalPrompt.replace('${conversationContext}', `
+CONVERSATION HISTORY (Use this for context if relevant):
+${historyText}
+      `.trim());
+    } else {
+      // Remove the placeholder if no history
+      finalPrompt = finalPrompt.replace('${conversationContext}', '');
+    }
+
+    return finalPrompt;
+  }
+
+  /**
+   * Select enhancement strategy
+   */
+  selectStrategy(metadata, context) {
+    const { intent, hasCode, complexity } = metadata || {};
+    const { conversationHistory = [] } = context || {};
+
+    // Check for anaphora (pronouns referencing previous context)
+    const hasAnaphora = /\b(it|this|that|he|she|they|them|him|her)\b/i.test(context.currentPrompt || '');
+    if (hasAnaphora && conversationHistory.length > 0) return 'contextual';
+
+    if (hasCode) return 'technical';
+    if (intent === 'creative') return 'creative';
+    if (conversationHistory.length > 5) return 'contextual';
+    if (typeof complexity === 'number' && complexity < 0.3) return 'clarification';
+    if (intent === 'question') return 'structured';
+
+    return 'general';
+  }
+
+  /**
+   * Clarify vague prompts
+   */
+  clarifyPrompt(prompt) {
+    let enhanced = prompt;
+
+    // Add specificity
+    if (enhanced.length < 50) {
+      enhanced += '. Please provide a detailed response with specific examples.';
+    }
+
+    // Remove vague words and replace with specific requests
+    const vaguePatterns = [
+      {
+        pattern: /\b(help|fix|do|make|improve|check)\b/gi, replacement: (match) => {
+          const replacements = {
+            'help': 'assist me with',
+            'fix': 'debug and fix',
+            'do': 'help me',
+            'make': 'create',
+            'improve': 'enhance and optimize',
+            'check': 'review and validate'
+          };
+          return replacements[match.toLowerCase()] || match;
+        }
+      }
+    ];
+
+    vaguePatterns.forEach(({ pattern, replacement }) => {
+      enhanced = enhanced.replace(pattern, replacement);
+    });
+
+    return enhanced;
+  }
+
+  /**
+   * Add relevant context
+   */
+  addContext(prompt, context) {
+    const { conversationHistory } = context;
+    const relevant = this.findRelevantContext(prompt, conversationHistory);
+
+    if (relevant.length === 0) return prompt;
+
+    const contextSummary = relevant
+      .map(msg => `- ${msg.role}: ${truncate(msg.content, 80)}`)
+      .join('\n');
+
+    return `Based on our conversation:\n${contextSummary}\n\n${prompt}`;
+  }
+
+  /**
+   * Structure prompt with clear sections
+   */
+  structurePrompt(prompt) {
+    const components = this.parsePromptComponents(prompt);
+
+    let structured = '';
+
+    if (components.background) {
+      structured += `**Background:**\n${components.background}\n\n`;
+    }
+
+    if (components.objective) {
+      structured += `**Goal:**\n${components.objective}\n\n`;
+    }
+
+    if (components.requirements.length > 0) {
+      structured += `**Requirements:**\n${components.requirements.map(r => `- ${r}`).join('\n')}\n\n`;
+    }
+
+    if (components.constraints.length > 0) {
+      structured += `**Constraints:**\n${components.constraints.map(c => `- ${c}`).join('\n')}\n\n`;
+    }
+
+    if (components.outputFormat) {
+      structured += `**Expected Output:**\n${components.outputFormat}`;
+    }
+
+    return structured.trim() || prompt;
+  }
+
+  /**
+   * Enhance technical prompts
+   */
+  enhanceTechnical(prompt) {
+    let enhanced = prompt;
+
+    // Add language specification if coding-related
+    if (/code|function|script|program|algorithm/i.test(prompt)) {
+      if (!/language|python|javascript|java|c\+\+|typescript/i.test(prompt)) {
+        enhanced += ' Please specify the programming language.';
+      }
+    }
+
+    // Add error handling requirements
+    if (/write|create|build|function/i.test(prompt) && !/error|exception|handle/i.test(prompt)) {
+      enhanced += ' Include proper error handling and input validation.';
+    }
+
+    // Add documentation request
+    if (/function|code|class|module/i.test(prompt) && !/comment|document|explain/i.test(prompt)) {
+      enhanced += ' Include clear comments and documentation.';
+    }
+
+    return enhanced;
+  }
+
+  /**
+   * Enhance creative prompts
+   */
+  enhanceCreative(prompt) {
+    let enhanced = prompt;
+
+    // Add tone/style specification if missing
+    if (!/tone|style|genre|write|story|poem|essay/i.test(prompt)) {
+      return enhanced;
+    }
+
+    if (!/tone|style|mood|genre/i.test(prompt)) {
+      enhanced += ' Please specify the desired tone and style.';
+    }
+
+    // Add audience specification if missing
+    if (!/audience|age|level|for|beginner|expert/i.test(prompt)) {
+      enhanced += ' Consider the target audience and adjust complexity accordingly.';
+    }
+
+    // Add length specification if missing
+    if (!/length|words|paragraphs|lines|short|long/i.test(prompt)) {
+      enhanced += ' Specify the desired length or scope.';
+    }
+
+    return enhanced;
+  }
+
+  /**
+   * General enhancement
+   */
+  enhanceGeneral(prompt, settings = {}) {
+    let enhanced = prompt;
+
+    // Add context clarification
+    if (!enhanced.includes('?') && enhanced.length < 100) {
+      enhanced = enhanced + '? Please provide a comprehensive answer.';
+    }
+
+    // Add format specification if not present
+    if (!/format|structure|list|paragraph|bullet|table|steps|process/i.test(enhanced)) {
+      enhanced += ' Please structure your response clearly.';
+    }
+
+    // Add scope clarification if vague
+    if (/what|why|how|tell|explain|describe/i.test(enhanced) && !enhanced.includes('context')) {
+      const context = this.findRelevantContext(prompt, settings.conversationHistory || []);
+      if (context.length > 0) {
+        enhanced += ' Consider the conversation context.';
+      }
+    }
+
+    return enhanced;
+  }
+
+  /**
+   * Parse prompt into components
+   */
+  parsePromptComponents(prompt) {
+    const components = {
+      background: null,
+      objective: null,
+      requirements: [],
+      constraints: [],
+      outputFormat: null
+    };
+
+    const sentences = prompt.split(/[.!?]+/).filter(s => s.trim());
+
+    sentences.forEach((sentence, index) => {
+      const lower = sentence.toLowerCase().trim();
+
+      if (index === 0 || lower.includes('want') || lower.includes('need')) {
+        components.objective = sentence.trim();
+      } else if (lower.includes('must') || lower.includes('should') || lower.includes('require')) {
+        components.requirements.push(sentence.trim());
+      } else if (lower.includes('not') || lower.includes("don't") || lower.includes('avoid') || lower.includes('without')) {
+        components.constraints.push(sentence.trim());
+      } else if (lower.includes('format') || lower.includes('structure') || lower.includes('output')) {
+        components.outputFormat = sentence.trim();
+      } else if (index < 2 && !components.background) {
+        components.background = sentence.trim();
+      }
+    });
+
+    return components;
+  }
+
+  /**
+   * Find relevant context messages
+   */
+  findRelevantContext(prompt, history) {
+    const normalizedPrompt = prompt.toLowerCase();
+    const keywords = normalizedPrompt.split(/\W+/).filter(w => w.length > 3);
+
+    // Check for pronouns/anaphora markers
+    const hasAnaphora = /\b(it|this|that|he|she|they|them|him|her)\b/i.test(normalizedPrompt);
+
+    // If prompt is short and uses pronouns, assume immediate context relevance
+    if (hasAnaphora && prompt.length < 50 && history.length > 0) {
+      // Return last 2 messages (likely user query + assistant response)
+      return history.slice(-2);
+    }
+
+    const relevant = [];
+
+    history.forEach(msg => {
+      const msgWords = msg.content.toLowerCase().split(/\W+/);
+      const overlap = keywords.filter(kw => msgWords.includes(kw));
+
+      if (overlap.length >= 2) {
+        relevant.push(msg);
+      }
+    });
+
+    return relevant.length > 0 ? relevant.slice(-3) : (hasAnaphora && history.length > 0 ? history.slice(-1) : []);
+  }
+
+  /**
+   * Apply enhancement level
+   */
+  applyEnhancementLevel(enhanced, original, level) {
+    switch (level) {
+      case ENHANCEMENT_LEVELS.LIGHT:
+        // Only apply minimal changes
+        if (enhanced.length > original.length * 1.5) {
+          return original + '\n\n' + enhanced.substring(original.length, original.length * 1.5);
+        }
+        return enhanced;
+
+      case ENHANCEMENT_LEVELS.AGGRESSIVE:
+        // Full enhancement
+        return enhanced;
+
+      case ENHANCEMENT_LEVELS.MODERATE:
+      default:
+        // Balanced approach
+        return enhanced;
+    }
+  }
+
+  /**
+   * Identify specific changes made
+   */
+  identifyChanges(original, enhanced) {
+    const changes = [];
+
+    if (enhanced.length > original.length * 1.2) {
+      changes.push('Added context and details');
+    }
+
+    if (enhanced.includes('**') || enhanced.includes('\n-')) {
+      changes.push('Improved structure');
+    }
+
+    if (enhanced.toLowerCase() !== original.toLowerCase()) {
+      changes.push('Refined wording');
+    }
+
+    if (enhanced.includes('[') || enhanced.includes('Context:')) {
+      changes.push('Added contextual references');
+    }
+
+    return changes;
+  }
+}
+
+export default PromptEnhancer;
