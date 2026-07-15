@@ -20,19 +20,17 @@ $sourceFiles = @(
   "assets",
   "scripts",
   "manifest.json",
-  "manifest.firefox.json",
-  "firefox-background.js",
   "package.json",
   "package-lock.json",
   "build.js",
   "BUILD_INSTRUCTIONS.md",
   "README.md",
+  "TESTING.md",
   "LICENSE",
-  "ARCHITECTURE.md",
-  "PLATFORM_INTEGRATION_GUIDE.md",
-  "ADDING_NEW_PLATFORM.md",
-  "V2_IMPLEMENTATION_SUMMARY.md",
-  "V2_USAGE_GUIDE.md"
+  "tests",
+  ".eslintrc.cjs",
+  "jest.config.cjs",
+  "playwright.config.js"
 )
 
 # Verify all critical files exist
