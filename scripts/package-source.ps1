@@ -46,9 +46,31 @@ if ($missing.Count -gt 0) {
   $missing | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
 }
 
-# Create the source archive
+# Create the source archive with portable forward-slash ZIP paths.
 Write-Host "Creating source archive..." -ForegroundColor Cyan
-Compress-Archive -Path $sourceFiles -DestinationPath $Output -Force
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+if (Test-Path $Output) { Remove-Item $Output -Force }
+$archive = [System.IO.Compression.ZipFile]::Open($Output, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+  foreach ($sourcePath in $sourceFiles) {
+    $resolved = Resolve-Path $sourcePath
+    if ((Get-Item $resolved).PSIsContainer) {
+      $files = Get-ChildItem $resolved -Recurse -File
+    } else {
+      $files = @(Get-Item $resolved)
+    }
+    foreach ($file in $files) {
+      $relative = $file.FullName.Substring((Get-Location).Path.Length + 1).Replace('\', '/')
+      $entry = $archive.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+      $input = [IO.File]::OpenRead($file.FullName)
+      $outputStream = $entry.Open()
+      try { $input.CopyTo($outputStream) } finally { $outputStream.Dispose(); $input.Dispose() }
+    }
+  }
+} finally {
+  $archive.Dispose()
+}
 
 # Display result
 if (Test-Path $Output) {
