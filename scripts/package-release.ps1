@@ -26,8 +26,27 @@ $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NoteP
 $firefoxManifest.background | Add-Member -NotePropertyName scripts -NotePropertyValue @("dist/service-worker.js")
 $firefoxManifest | ConvertTo-Json -Depth 20 | Set-Content $firefoxManifestPath -Encoding utf8
 
-Compress-Archive -Path "$chromeDir\*" -DestinationPath $chromeZip -Force
-Compress-Archive -Path "$firefoxDir\*" -DestinationPath $firefoxZip -Force
+function New-PortableZip([string]$sourceDir, [string]$destination) {
+  if (Test-Path $destination) { Remove-Item $destination -Force }
+  Add-Type -AssemblyName System.IO.Compression
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $archive = [System.IO.Compression.ZipFile]::Open($destination, [System.IO.Compression.ZipArchiveMode]::Create)
+  try {
+    Get-ChildItem $sourceDir -Recurse -File | ForEach-Object {
+      $rootPrefix = ((Resolve-Path $sourceDir).Path.TrimEnd('\') + '\')
+      $relative = $_.FullName.Substring($rootPrefix.Length).Replace('\', '/')
+      $entry = $archive.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+      $input = [IO.File]::OpenRead($_.FullName)
+      $output = $entry.Open()
+      try { $input.CopyTo($output) } finally { $output.Dispose(); $input.Dispose() }
+    }
+  } finally {
+    $archive.Dispose()
+  }
+}
+
+New-PortableZip $chromeDir $chromeZip
+New-PortableZip $firefoxDir $firefoxZip
 
 Write-Output $chromeZip
 Write-Output $firefoxZip
